@@ -1,0 +1,7 @@
+/* Typography utility classes from spec */
+.font-title { font-size: 24px; font-weight: 600; line-height: 1.2; }
+.font-section-header { font-size: 16px; font-weight: 500; line-height: 1.4; }
+.font-body { font-size: 14px; font-weight: 400; line-height: 1.5; }
+.font-caption { font-size: 12px; font-weight: 400; line-height: 1.4; }
+.font-micro { font-size: 11px; font-weight: 500; line-height: 1.2; }
+.font-mono { font-family: "SF Mono", ui-monospace, monospace; font-size: 13px; font-weight: 400; }
