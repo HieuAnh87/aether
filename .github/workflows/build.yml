@@ -5,7 +5,7 @@ on:
     tags:
       - 'v*'
   pull_request:
-    branches: [main]
+    branches: [main, master]
 
 env:
   SIDECAR_VERSION: ${{ vars.SIDECAR_VERSION || 'v6.9.45' }}
@@ -29,8 +29,13 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Rust
-        uses: rust-lang/setup-rust@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
@@ -54,14 +59,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'pnpm'
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Rust
-        uses: rust-lang/setup-rust@v1
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install pnpm dependencies
         run: pnpm install --frozen-lockfile
@@ -89,13 +104,19 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
       - name: Setup Rust
-        uses: rust-lang/setup-rust@v1
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install pnpm dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Download sidecar
+        shell: bash
         run: ./scripts/download-sidecar.sh
 
       - name: Build Tauri app
