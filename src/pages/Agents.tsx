@@ -3,6 +3,7 @@ import { createSignal, createResource, createEffect, For, Show } from "solid-js"
 import { invoke } from "@tauri-apps/api/core";
 import { proxyStore } from "../stores/proxyStore";
 import { presetStore } from "../stores/presetStore";
+import { agentProviderStore } from "../stores/agentProviderStore";
 import GlassCard from "../components/GlassCard";
 import Button from "../components/Button";
 import Badge from "../components/Badge";
@@ -43,6 +44,36 @@ interface OpenCodePreview {
   isSafeMerge: boolean;
 }
 
+interface ClaudeCodePreview {
+  configPath: string;
+  existingFileFound: boolean;
+  existingEnvConfig: boolean;
+  willInject: Record<string, unknown>;
+  isSafeMerge: boolean;
+}
+
+interface ClaudeSubModels {
+  opus: string;
+  sonnet: string;
+  haiku: string;
+  small: string;
+}
+
+interface ClaudeModelSlot {
+  id: keyof ClaudeSubModels | "main";
+  label: string;
+  envVar: string;
+  defaultModel: string;
+}
+
+const CLAUDE_MODEL_SLOTS: ClaudeModelSlot[] = [
+  { id: "main", label: "Primary Model", envVar: "ANTHROPIC_MODEL", defaultModel: "claude-sonnet-4-6" },
+  { id: "opus", label: "Opus Model", envVar: "ANTHROPIC_DEFAULT_OPUS_MODEL", defaultModel: "claude-opus-4-6" },
+  { id: "sonnet", label: "Sonnet Model", envVar: "ANTHROPIC_DEFAULT_SONNET_MODEL", defaultModel: "claude-sonnet-4-6" },
+  { id: "haiku", label: "Haiku Model", envVar: "ANTHROPIC_DEFAULT_HAIKU_MODEL", defaultModel: "claude-haiku-4-5-20251001" },
+  { id: "small", label: "Small/Fast Model", envVar: "ANTHROPIC_SMALL_FAST_MODEL", defaultModel: "claude-haiku-4-5-20251001" },
+];
+
 // ─── Agent-specific config metadata ──────────────────────────────────────────
 
 interface AgentConfigMeta {
@@ -60,10 +91,11 @@ const AGENT_CONFIG_META: Record<string, AgentConfigMeta> = {
   "claude-code": {
     configTarget: "~/.claude/settings.json (env section)",
     configExplanation:
-      "Sets ANTHROPIC_BASE_URL to Aether proxy and configures default model",
-    models: ["claude-opus-4-6", "claude-sonnet-4-6", "claude-haiku-4-5-20251001"],
+      "Sets ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, and ANTHROPIC_MODEL in ~/.claude/settings.json (env section). Safe merge — existing keys untouched.",
+    models: [],
     defaultModel: "claude-sonnet-4-6",
     supportsEffort: false,
+    usesAvailableModels: true,
   },
   codex: {
     configTarget: "~/.codex/config.toml + ~/.codex/auth.json",
@@ -158,6 +190,18 @@ const Agents: Component = () => {
   const [opencodePreview, setOpencodePreview] = createSignal<OpenCodePreview | null>(null);
   const [previewLoading, setPreviewLoading] = createSignal(false);
 
+  // Claude Code preview panel
+  const [claudePreview, setClaudePreview] = createSignal<ClaudeCodePreview | null>(null);
+  const [claudePreviewLoading, setClaudePreviewLoading] = createSignal(false);
+
+  // Claude Code sub-model selections (opus, sonnet, haiku, small)
+  const [claudeSubModels, setClaudeSubModels] = createSignal<ClaudeSubModels>({
+    opus: "",
+    sonnet: "",
+    haiku: "",
+    small: "",
+  });
+
   // Misc
   const [configuringId, setConfiguringId] = createSignal<string | null>(null);
   const [refreshing, setRefreshing] = createSignal(false);
@@ -193,10 +237,26 @@ const Agents: Component = () => {
     setExpandedId(wasExpanded ? null : agentId);
   };
 
-  // Derive a non-aether model list for OpenCode picker
-  const availableModelsForOpencode = () => {
+  // Derive a non-aether model list for dynamic model pickers (opencode, claude-code)
+  // When filterCompat is specified, only show models from providers with that compatibility.
+  const availableModelsForAgent = (filterCompat: "openai" | "anthropic" | null = null) => {
     const all = presetStore.availableModels() ?? [];
-    return all.filter((m) => !m.startsWith("aether/"));
+    const nonAether = all.filter((m) => !m.startsWith("aether/"));
+    if (!filterCompat) return nonAether;
+
+    // Get provider IDs matching the required compatibility
+    const matchingProviderIds = new Set(
+      agentProviderStore.providers()
+        .filter((p) => p.compatibility === filterCompat)
+        .map((p) => p.id)
+    );
+    if (matchingProviderIds.size === 0) return nonAether; // fallback: show all if no providers loaded
+
+    return nonAether.filter((m) => {
+      const slashIdx = m.indexOf("/");
+      const providerId = slashIdx > 0 ? m.slice(0, slashIdx) : "";
+      return matchingProviderIds.has(providerId);
+    });
   };
 
   const loadOpencodePreview = async (selectedModel?: string) => {
@@ -222,6 +282,37 @@ const Agents: Component = () => {
     }
   });
 
+  const loadClaudePreview = async (selectedModel?: string) => {
+    setClaudePreviewLoading(true);
+    const subs = claudeSubModels();
+    try {
+      const preview = await invoke<ClaudeCodePreview>("preview_claude_code_config", {
+        port: proxyStore.port(),
+        model: selectedModel ?? (selectedModels()["claude-code"] || undefined),
+        opusModel: subs.opus || undefined,
+        sonnetModel: subs.sonnet || undefined,
+        haikuModel: subs.haiku || undefined,
+        smallFastModel: subs.small || undefined,
+      });
+      setClaudePreview(preview);
+    } catch {
+      setClaudePreview(null);
+    } finally {
+      setClaudePreviewLoading(false);
+    }
+  };
+
+  // Reload preview when claude-code model selection changes
+  createEffect(() => {
+    const model = selectedModels()["claude-code"];
+    // Track sub-models reactively
+    const subs = claudeSubModels();
+    void subs; // read to track
+    if (expandedId() === "claude-code") {
+      void loadClaudePreview(model);
+    }
+  });
+
   // ── Handlers ─────────────────────────────────────────────────────────────────
 
   const handleRefresh = async () => {
@@ -229,6 +320,8 @@ const Agents: Component = () => {
     setShellPanel(null);
     setExpandedId(null);
     setOpencodePreview(null);
+    setClaudePreview(null);
+    setClaudeSubModels({ opus: "", sonnet: "", haiku: "", small: "" });
     try {
       await refetch();
     } finally {
@@ -247,11 +340,18 @@ const Agents: Component = () => {
           ? selectedModels()[agent.id] || undefined
           : undefined;
 
+      const subs = claudeSubModels();
       const result = await invoke<ConfigureResult>("configure_cli_agent", {
         agentId: agent.id,
         port: proxyStore.port(),
         model: modelValue,
         effort: meta?.supportsEffort ? getEffort(agent.id) || undefined : undefined,
+        ...(agent.id === "claude-code" && {
+          opusModel: subs.opus || undefined,
+          sonnetModel: subs.sonnet || undefined,
+          haikuModel: subs.haiku || undefined,
+          smallFastModel: subs.small || undefined,
+        }),
       });
 
       if (!result.success) {
@@ -603,8 +703,99 @@ const Agents: Component = () => {
                           </div>
                         </Show>
 
-                        {/* Model selector — dynamic from availableModels (opencode) */}
-                        <Show when={meta.usesAvailableModels}>
+                        {/* Model selectors — Claude Code: 5 per-role model slots */}
+                        <Show when={meta.usesAvailableModels && agent.id === "claude-code"}>
+                          <div class="space-y-2">
+                            <label class="font-micro text-text-secondary block">
+                              Model Configuration
+                            </label>
+                            <For each={CLAUDE_MODEL_SLOTS}>
+                              {(slot) => {
+                                const isMain = slot.id === "main";
+                                const currentMain = () => selectedModels()["claude-code"] ?? "";
+                                const currentSub = () => claudeSubModels()[slot.id as keyof ClaudeSubModels] ?? "";
+                                const currentValue = () => isMain ? currentMain() : currentSub();
+                                const hasValue = () => currentValue() !== "";
+
+                                const selectModelClass = () =>
+                                  isMain
+                                    ? "w-full appearance-none rounded-md px-3 py-2 font-caption text-text pr-8 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-colors cursor-pointer"
+                                    : "w-full appearance-none rounded-md px-3 py-1.5 font-caption text-text pr-8 focus:outline-none focus:ring-1 focus:ring-primary/50 transition-colors cursor-pointer";
+
+                                return (
+                                  <div class="flex items-center gap-2">
+                                    <div class="flex-1 min-w-0">
+                                      <label class="font-micro text-text-secondary/80 block leading-none mb-1">
+                                        {slot.label}
+                                      </label>
+                                      <div class="relative">
+                                        <select
+                                          class={selectModelClass()}
+                                          style={{
+                                            "background": "rgba(255,255,255,0.06)",
+                                            "border": "1px solid rgba(255,255,255,0.1)",
+                                            "color": currentValue() ? "var(--color-text)" : "var(--color-text-secondary)",
+                                          }}
+                                          value={currentValue()}
+                                          onChange={(e) => {
+                                            const val = e.currentTarget.value;
+                                            if (isMain) {
+                                              setSelectedModels((prev) =>
+                                                val ? { ...prev, "claude-code": val } : (() => { const n = { ...prev }; delete n["claude-code"]; return n; })()
+                                              );
+                                            } else {
+                                              const key = slot.id as keyof ClaudeSubModels;
+                                              setClaudeSubModels((prev) => ({ ...prev, [key]: val }));
+                                            }
+                                          }}
+                                        >
+                                          <option value="" style={{ "background": "#141416" }}>
+                                            — use default ({slot.defaultModel}) —
+                                          </option>
+                                          <For each={availableModelsForAgent("anthropic")}>
+                                            {(m) => (
+                                              <option value={m} style={{ "background": "#141416" }}>
+                                                {m}
+                                              </option>
+                                            )}
+                                          </For>
+                                        </select>
+                                        <div class="pointer-events-none absolute inset-y-0 right-2.5 flex items-center">
+                                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-text-secondary">
+                                            <polyline points="6 9 12 15 18 9" />
+                                          </svg>
+                                        </div>
+                                      </div>
+                                    </div>
+                                    <div class="flex gap-1 pt-4">
+                                      <Show when={hasValue()}>
+                                        <button
+                                          class="px-2 py-1 rounded text-xs font-micro text-text-secondary/60 hover:text-text-secondary transition-colors border border-border/50"
+                                          onClick={() => {
+                                            if (isMain) {
+                                              setSelectedModels((prev) => { const n = { ...prev }; delete n["claude-code"]; return n; });
+                                            } else {
+                                              const key = slot.id as keyof ClaudeSubModels;
+                                              setClaudeSubModels((prev) => ({ ...prev, [key]: "" }));
+                                            }
+                                          }}
+                                        >
+                                          Reset
+                                        </button>
+                                      </Show>
+                                    </div>
+                                  </div>
+                                );
+                              }}
+                            </For>
+                            <p class="font-micro text-text-secondary/60">
+                              Only models from Anthropic-compatible providers are shown. Values are written as env vars in <code class="font-mono">~/.claude/settings.json</code>.
+                            </p>
+                          </div>
+                        </Show>
+
+                        {/* Model selector — OpenCode: dynamic single dropdown */}
+                        <Show when={meta.usesAvailableModels && agent.id === "opencode"}>
                           <div class="space-y-1.5">
                             <div class="flex items-center justify-between">
                               <label class="font-micro text-text-secondary block">
@@ -636,17 +827,21 @@ const Agents: Component = () => {
                                 value={selectedModels()[agent.id] ?? ""}
                                 onChange={(e) => {
                                   const val = e.currentTarget.value;
-                                  setSelectedModels((prev) =>
-                                    val
-                                      ? { ...prev, [agent.id]: val }
-                                      : (() => { const n = { ...prev }; delete n[agent.id]; return n; })()
-                                  );
+                                  if (val) {
+                                    setSelectedModels((prev) => ({ ...prev, [agent.id]: val }));
+                                  } else {
+                                    setSelectedModels((prev) => {
+                                      const n = { ...prev };
+                                      delete n[agent.id];
+                                      return n;
+                                    });
+                                  }
                                 }}
                               >
                                 <option value="" style={{ "background": "#141416" }}>
-                                  — no default (select in OpenCode) —
+                                  — no default —
                                 </option>
-                                <For each={availableModelsForOpencode()}>
+                                <For each={availableModelsForAgent(null)}>
                                   {(m) => (
                                     <option
                                       value={m}
@@ -737,6 +932,68 @@ const Agents: Component = () => {
                                   </pre>
                                   <p class="font-micro text-text-secondary/50">
                                     All other keys (mcp, agent, plugin, model, etc.) are preserved as-is.
+                                  </p>
+                                </div>
+                              )}
+                            </Show>
+                          </div>
+                        </Show>
+
+                        {/* Claude Code config preview */}
+                        <Show when={agent.id === "claude-code"}>
+                          <div class="space-y-1.5">
+                            <div class="flex items-center gap-2">
+                              <label class="font-micro text-text-secondary block">
+                                Config Preview
+                              </label>
+                              <Show when={claudePreviewLoading()}>
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  width="10"
+                                  height="10"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  stroke-width="2"
+                                  stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  class="animate-spin text-text-secondary/50"
+                                >
+                                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                </svg>
+                              </Show>
+                            </div>
+                            <Show when={claudePreview()} fallback={
+                              <p class="font-micro text-text-secondary/50 italic">Loading preview…</p>
+                            }>
+                              {(preview) => (
+                                <div class="space-y-2">
+                                  <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="inline-flex items-center gap-1 rounded px-2 py-0.5 font-micro"
+                                      style={{ "background": "rgba(34,197,94,0.1)", "border": "1px solid rgba(34,197,94,0.25)", "color": "rgb(134,239,172)" }}
+                                    >
+                                      ✓ Safe merge
+                                    </span>
+                                    <Show when={preview().existingFileFound}>
+                                      <span class="font-micro text-text-secondary/60">
+                                        {preview().existingEnvConfig
+                                          ? "Will update existing env config"
+                                          : "Will add env config to existing file"}
+                                      </span>
+                                    </Show>
+                                    <Show when={!preview().existingFileFound}>
+                                      <span class="font-micro text-text-secondary/60">
+                                        Will create new settings.json
+                                      </span>
+                                    </Show>
+                                  </div>
+                                  <pre class="rounded-md border border-border bg-glass-bg px-3 py-2.5 text-xs font-mono text-text-secondary overflow-x-auto whitespace-pre-wrap break-all leading-relaxed"
+                                    style={{ "font-size": "10px" }}
+                                  >
+                                    {JSON.stringify(preview().willInject, null, 2)}
+                                  </pre>
+                                  <p class="font-micro text-text-secondary/50">
+                                    All other keys (permissions, hooks, etc.) are preserved as-is.
                                   </p>
                                 </div>
                               )}

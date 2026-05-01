@@ -174,6 +174,10 @@ pub async fn configure_cli_agent(
     port: Option<u16>,
     model: Option<String>,
     effort: Option<String>,
+    opus_model: Option<String>,
+    sonnet_model: Option<String>,
+    haiku_model: Option<String>,
+    small_fast_model: Option<String>,
 ) -> Result<serde_json::Value, String> {
     let resolved_port = port.unwrap_or_else(|| {
         settings::read_settings()
@@ -185,7 +189,15 @@ pub async fn configure_cli_agent(
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
 
     match agent_id.as_str() {
-        "claude-code" => configure_claude_code(&home, &endpoint, model),
+        "claude-code" => configure_claude_code(
+            &home,
+            &endpoint,
+            model,
+            opus_model.as_deref(),
+            sonnet_model.as_deref(),
+            haiku_model.as_deref(),
+            small_fast_model.as_deref(),
+        ),
         "codex" => configure_codex(&home, &endpoint, model, effort),
         "gemini-cli" => configure_gemini_cli(&endpoint),
         "amp-cli" => configure_amp_cli(&home, resolved_port),
@@ -203,6 +215,10 @@ fn configure_claude_code(
     home: &std::path::Path,
     endpoint: &str,
     model: Option<String>,
+    opus_model: Option<&str>,
+    sonnet_model: Option<&str>,
+    haiku_model: Option<&str>,
+    small_fast_model: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     let config_dir = home.join(".claude");
     std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
@@ -214,10 +230,10 @@ fn configure_claude_code(
         "ANTHROPIC_BASE_URL": endpoint,
         "ANTHROPIC_AUTH_TOKEN": "aether-managed",
         "ANTHROPIC_MODEL": selected_model,
-        "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-6",
-        "ANTHROPIC_DEFAULT_SONNET_MODEL": "claude-sonnet-4-6",
-        "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5-20251001",
-        "ANTHROPIC_SMALL_FAST_MODEL": "claude-haiku-4-5-20251001"
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": opus_model.unwrap_or("claude-opus-4-6"),
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": sonnet_model.unwrap_or("claude-sonnet-4-6"),
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": haiku_model.unwrap_or("claude-haiku-4-5-20251001"),
+        "ANTHROPIC_SMALL_FAST_MODEL": small_fast_model.unwrap_or("claude-haiku-4-5-20251001"),
     });
 
     let mut final_config = merge_into_settings_json(&config_path, "env", env_config)?;
@@ -656,6 +672,61 @@ pub fn preview_opencode_config(port: Option<u16>, model: Option<String>) -> Resu
         "configPath": config_path.to_string_lossy(),
         "existingFileFound": existing_has_config,
         "existingAetherProvider": existing_has_aether,
+        "willInject": injected,
+        "isSafeMerge": true
+    }))
+}
+
+/// Preview what configure_claude_code would write, without actually writing it.
+/// Returns the JSON that would be merged into ~/.claude/settings.json.
+#[tauri::command]
+pub fn preview_claude_code_config(
+    port: Option<u16>,
+    model: Option<String>,
+    opus_model: Option<String>,
+    sonnet_model: Option<String>,
+    haiku_model: Option<String>,
+    small_fast_model: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let resolved_port = port.unwrap_or_else(|| {
+        settings::read_settings()
+            .map(|s| s.proxy_port)
+            .unwrap_or(8317)
+    });
+    let endpoint = format!("http://127.0.0.1:{}", resolved_port);
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let config_path = home.join(".claude/settings.json");
+
+    let selected_model = model.unwrap_or_else(|| "claude-sonnet-4-6".to_string());
+
+    let env_delta = serde_json::json!({
+        "ANTHROPIC_BASE_URL": endpoint,
+        "ANTHROPIC_AUTH_TOKEN": "aether-managed",
+        "ANTHROPIC_MODEL": selected_model,
+        "ANTHROPIC_DEFAULT_OPUS_MODEL": opus_model.as_deref().unwrap_or("claude-opus-4-6"),
+        "ANTHROPIC_DEFAULT_SONNET_MODEL": sonnet_model.as_deref().unwrap_or("claude-sonnet-4-6"),
+        "ANTHROPIC_DEFAULT_HAIKU_MODEL": haiku_model.as_deref().unwrap_or("claude-haiku-4-5-20251001"),
+        "ANTHROPIC_SMALL_FAST_MODEL": small_fast_model.as_deref().unwrap_or("claude-haiku-4-5-20251001"),
+    });
+
+    let injected = serde_json::json!({
+        "env": env_delta,
+        "model": selected_model,
+    });
+
+    let existing_has_config = config_path.exists();
+    let existing_has_env = if existing_has_config {
+        std::fs::read_to_string(&config_path)
+            .map(|c| c.contains("ANTHROPIC_BASE_URL") || c.contains("aether-managed"))
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    Ok(serde_json::json!({
+        "configPath": config_path.to_string_lossy(),
+        "existingFileFound": existing_has_config,
+        "existingEnvConfig": existing_has_env,
         "willInject": injected,
         "isSafeMerge": true
     }))

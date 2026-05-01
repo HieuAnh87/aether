@@ -95,6 +95,7 @@ pub fn run() {
             commands::agents::detect_cli_agents,
             commands::agents::configure_cli_agent,
             commands::agents::preview_opencode_config,
+            commands::agents::preview_claude_code_config,
             commands::agent_providers::get_agent_providers,
             commands::agent_providers::get_well_known_providers,
             commands::agent_providers::add_agent_provider,
