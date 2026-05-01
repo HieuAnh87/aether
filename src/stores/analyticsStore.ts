@@ -50,13 +50,11 @@ export interface ProviderStat {
  * - `{ source: "live" }` — fresh from the proxy this session
  * - `{ source: "localStorage", at: number }` — cached in localStorage with known timestamp
  * - `{ source: "disk" }` — from Rust disk cache, no timestamp available
- * - `{ source: "merged" }` — live + accumulated persistent data combined
  */
 export type CacheStatus =
   | { source: "live" }
   | { source: "localStorage"; at: number }
-  | { source: "disk" }
-  | { source: "merged"; at: number };
+  | { source: "disk" };
 
 export type TimeRange = "today" | "7d" | "30d" | "month" | "all";
 
@@ -93,99 +91,21 @@ function rangeCutoff(range: TimeRange): string | null {
   return cutoff.toISOString().slice(0, 10);
 }
 
-/** Deep-merge two UsageInner objects using max() for counters (accumulates higher values). */
-function mergeUsageInner(live: UsageInner, prev: UsageInner | null): UsageInner {
-  const base = prev ?? {
-    total_requests: 0,
-    success_count: 0,
-    failure_count: 0,
-    total_tokens: 0,
-    apis: {},
-    requests_by_hour: {},
-    requests_by_day: {},
-    tokens_by_hour: {},
-    tokens_by_day: {},
-  };
-
-  // Max for counters — guards against proxy restart resetting in-memory counters to 0
-  const total_requests = Math.max(live.total_requests, base.total_requests);
-  const success_count = Math.max(live.success_count, base.success_count);
-  const failure_count = Math.max(live.failure_count, base.failure_count);
-  const total_tokens = Math.max(live.total_tokens, base.total_tokens);
-
-  // For per-hour/per-day maps, sum values but cap at max(live, base) per key
-  // to avoid double-counting if proxy already includes historical in its response
-  const requests_by_hour: Record<string, number> = { ...base.requests_by_hour };
-  for (const [k, v] of Object.entries(live.requests_by_hour)) {
-    requests_by_hour[k] = Math.max(v, requests_by_hour[k] ?? 0);
-  }
-
-  const requests_by_day: Record<string, number> = { ...base.requests_by_day };
-  for (const [k, v] of Object.entries(live.requests_by_day)) {
-    requests_by_day[k] = Math.max(v, requests_by_day[k] ?? 0);
-  }
-
-  const tokens_by_hour: Record<string, number> = { ...base.tokens_by_hour };
-  for (const [k, v] of Object.entries(live.tokens_by_hour)) {
-    tokens_by_hour[k] = Math.max(v, tokens_by_hour[k] ?? 0);
-  }
-
-  const tokens_by_day: Record<string, number> = { ...base.tokens_by_day };
-  for (const [k, v] of Object.entries(live.tokens_by_day)) {
-    tokens_by_day[k] = Math.max(v, tokens_by_day[k] ?? 0);
-  }
-
-  // Merge apis: per-provider per-model max
-  const apis: Record<string, Record<string, ModelStats>> = { ...base.apis };
-  for (const [provider, models] of Object.entries(live.apis)) {
-    if (!apis[provider]) apis[provider] = {};
-    for (const [model, stats] of Object.entries(models)) {
-      const prevStats = apis[provider][model];
-      apis[provider][model] = {
-        requests: Math.max(stats.requests, prevStats?.requests ?? 0),
-        tokens: Math.max(stats.tokens, prevStats?.tokens ?? 0),
-        success: Math.max(stats.success, prevStats?.success ?? 0),
-        failure: Math.max(stats.failure, prevStats?.failure ?? 0),
-      };
-    }
-  }
-
-  return {
-    total_requests,
-    success_count,
-    failure_count,
-    total_tokens,
-    apis,
-    requests_by_hour,
-    requests_by_day,
-    tokens_by_hour,
-    tokens_by_day,
-  };
-}
-
-/**
- * Merge live UsageResponse with accumulated persistent state.
- * Uses max() for counters to guard against proxy restarts resetting counters to 0.
- */
-function mergeUsageResponse(live: UsageResponse, prev: UsageResponse | null): UsageResponse {
-  return {
-    failed_requests: Math.max(live.failed_requests, prev?.failed_requests ?? 0),
-    usage: mergeUsageInner(live.usage, prev?.usage ?? null),
-  };
-}
-
 // ---------------------------------------------------------------------------
 // Signals
 // ---------------------------------------------------------------------------
 
 /**
- * Accumulated persistent usage state — survives proxy restarts.
- * This is the source of truth for all computed displays.
- * Loaded from disk cache on init, merged with live data on each fetch.
+ * Usage state displayed in analytics.
+ * Source of truth is lifetime accumulator (survives proxy restarts).
  */
 const [persistentAccumulator, setPersistentAccumulator] = createSignal<UsageResponse | null>(null);
 /** Live display state — derived from accumulator each poll cycle */
 const [usageStats, setUsageStats] = createSignal<UsageResponse | null>(null);
+/** Lifetime accumulator — tracks totals across proxy restarts */
+const [lifetimeAccumulator, setLifetimeAccumulator] = createSignal<LifetimeAccumulator | null>(null);
+/** Last live snapshot — used to compute deltas */
+const [lastSnapshot, setLastSnapshot] = createSignal<UsageResponse | null>(null);
 const [loading, setLoading] = createSignal(false);
 const [error, setError] = createSignal<string | null>(null);
 /** Unix timestamp (ms) of last *live* fetch from the proxy. null = never fetched live. */
@@ -207,13 +127,13 @@ const [timeRange, setTimeRange] = createSignal<TimeRange>("7d");
 // Computed / derived
 // ---------------------------------------------------------------------------
 
-const totalRequests = createMemo(() => persistentAccumulator()?.usage.total_requests ?? 0);
-const totalTokens = createMemo(() => persistentAccumulator()?.usage.total_tokens ?? 0);
-const failedRequests = createMemo(() => persistentAccumulator()?.failed_requests ?? 0);
+const totalRequests = createMemo(() => lifetimeAccumulator()?.total_requests ?? 0);
+const totalTokens = createMemo(() => lifetimeAccumulator()?.total_tokens ?? 0);
+const failedRequests = createMemo(() => lifetimeAccumulator()?.failure_count ?? 0);
 
 /** Requests per hour slot (24-element array, index = hour 0–23) */
 const reqByHour = createMemo((): number[] => {
-  const map = persistentAccumulator()?.usage.requests_by_hour ?? {};
+  const map = lifetimeAccumulator()?.requests_by_hour ?? {};
   const arr = new Array<number>(24).fill(0);
   for (let h = 0; h < 24; h++) {
     arr[h] = map[String(h)] ?? 0;
@@ -223,7 +143,7 @@ const reqByHour = createMemo((): number[] => {
 
 /** Tokens per hour slot (24-element array, index = hour 0–23) */
 const tokByHour = createMemo((): number[] => {
-  const map = persistentAccumulator()?.usage.tokens_by_hour ?? {};
+  const map = lifetimeAccumulator()?.tokens_by_hour ?? {};
   const arr = new Array<number>(24).fill(0);
   for (let h = 0; h < 24; h++) {
     arr[h] = map[String(h)] ?? 0;
@@ -233,7 +153,7 @@ const tokByHour = createMemo((): number[] => {
 
 /** Raw daily data sorted ascending — used by filteredReqByDay */
 const reqByDay = createMemo(() => {
-  const map = persistentAccumulator()?.usage.requests_by_day ?? {};
+  const map = lifetimeAccumulator()?.requests_by_day ?? {};
   return Object.entries(map)
     .map(([date, count]) => ({ date, count }))
     .sort((a, b) => a.date.localeCompare(b.date));
@@ -255,7 +175,7 @@ const filteredReqByDay = createMemo(() => {
 /** Today's request count — always uses local timezone date, ignores timeRange filter */
 const todayRequests = createMemo(() => {
   const today = localDateString();
-  return persistentAccumulator()?.usage.requests_by_day[today] ?? 0;
+  return lifetimeAccumulator()?.requests_by_day[today] ?? 0;
 });
 
 /**
@@ -271,18 +191,18 @@ const filteredTotalRequests = createMemo(() => {
 
 /**
  * Total tokens within the active time range.
- * Note: tokens_by_day is available in UsageInner for accurate filtered sums.
+ * Note: tokens_by_day is available in LifetimeAccumulator for accurate filtered sums.
  */
 const filteredTotalTokens = createMemo(() => {
   const range = timeRange();
   if (range === "today") {
     const today = localDateString();
-    return persistentAccumulator()?.usage.tokens_by_day[today] ?? 0;
+    return lifetimeAccumulator()?.tokens_by_day[today] ?? 0;
   }
   if (range === "all") return totalTokens();
   const cutoffStr = rangeCutoff(range);
   if (!cutoffStr) return totalTokens();
-  const map = persistentAccumulator()?.usage.tokens_by_day ?? {};
+  const map = lifetimeAccumulator()?.tokens_by_day ?? {};
   return Object.entries(map)
     .filter(([date]) => date >= cutoffStr)
     .reduce((sum, [, v]) => sum + v, 0);
@@ -303,12 +223,15 @@ const filteredFailedRequests = createMemo(() => {
 /**
  * Provider breakdown: sorted by request count descending.
  * Each entry aggregates all models for that provider.
- * Respects the active time range filter.
+ * Applies time-range filtering via proportional estimation from requests_by_day.
  */
 const providerStats = createMemo((): ProviderStat[] => {
-  const apis = persistentAccumulator()?.usage.apis ?? {};
-  const range = timeRange();
-  const cutoffStr = rangeCutoff(range);
+  const apis = lifetimeAccumulator()?.apis ?? {};
+
+  // Proportional factor: what fraction of total requests fall within the filtered range?
+  const total = totalRequests();
+  const filtered = filteredTotalRequests();
+  const factor = total > 0 ? filtered / total : 0;
 
   return Object.entries(apis)
     .map(([provider, models]) => {
@@ -322,9 +245,143 @@ const providerStats = createMemo((): ProviderStat[] => {
       }
       return { provider, requests, tokens, models: modelNames };
     })
+    .map((p) => ({
+      ...p,
+      // Apply time-range filter proportionally (estimation — no per-provider per-day data)
+      requests: Math.round(p.requests * factor),
+      tokens: Math.round(p.tokens * factor),
+    }))
     .filter((p) => p.requests > 0)
     .sort((a, b) => b.requests - a.requests);
 });
+
+// ---------------------------------------------------------------------------
+// Delta accumulation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Initialize lifetime accumulator from first live snapshot.
+ */
+function initLifetimeFromSnapshot(snapshot: UsageResponse): LifetimeAccumulator {
+  return {
+    total_requests: snapshot.usage.total_requests,
+    success_count: snapshot.usage.success_count,
+    failure_count: snapshot.usage.failure_count,
+    total_tokens: snapshot.usage.total_tokens,
+    apis: JSON.parse(JSON.stringify(snapshot.usage.apis)), // deep clone
+    requests_by_hour: { ...snapshot.usage.requests_by_hour },
+    requests_by_day: { ...snapshot.usage.requests_by_day },
+    tokens_by_hour: { ...snapshot.usage.tokens_by_hour },
+    tokens_by_day: { ...snapshot.usage.tokens_by_day },
+  };
+}
+
+/**
+ * Compute delta and accumulate into lifetime.
+ * When live < last (proxy restart), treat as new session — reset baseline, don't subtract.
+ */
+function accumulateDelta(
+  lifetime: LifetimeAccumulator,
+  live: UsageResponse,
+  last: UsageResponse | null
+): LifetimeAccumulator {
+  // If no previous snapshot, initialize from live
+  if (!last) {
+    return initLifetimeFromSnapshot(live);
+  }
+
+  const liveUsage = live.usage;
+  const lastUsage = last.usage;
+
+  // Detect proxy restart: live counters dropped below last
+  const isRestart =
+    liveUsage.total_requests < lastUsage.total_requests ||
+    liveUsage.total_tokens < lastUsage.total_tokens;
+
+  if (isRestart) {
+    // New session — add live snapshot as-is to lifetime (don't subtract)
+    return {
+      total_requests: lifetime.total_requests + liveUsage.total_requests,
+      success_count: lifetime.success_count + liveUsage.success_count,
+      failure_count: lifetime.failure_count + liveUsage.failure_count,
+      total_tokens: lifetime.total_tokens + liveUsage.total_tokens,
+      apis: accumulateApis(lifetime.apis, liveUsage.apis, {}),
+      requests_by_hour: accumulateMap(lifetime.requests_by_hour, liveUsage.requests_by_hour, {}),
+      requests_by_day: accumulateMap(lifetime.requests_by_day, liveUsage.requests_by_day, {}),
+      tokens_by_hour: accumulateMap(lifetime.tokens_by_hour, liveUsage.tokens_by_hour, {}),
+      tokens_by_day: accumulateMap(lifetime.tokens_by_day, liveUsage.tokens_by_day, {}),
+    };
+  }
+
+  // Normal increment — compute delta and add to lifetime
+  const deltaRequests = liveUsage.total_requests - lastUsage.total_requests;
+  const deltaSuccess = liveUsage.success_count - lastUsage.success_count;
+  const deltaFailure = liveUsage.failure_count - lastUsage.failure_count;
+  const deltaTokens = liveUsage.total_tokens - lastUsage.total_tokens;
+
+  return {
+    total_requests: lifetime.total_requests + deltaRequests,
+    success_count: lifetime.success_count + deltaSuccess,
+    failure_count: lifetime.failure_count + deltaFailure,
+    total_tokens: lifetime.total_tokens + deltaTokens,
+    apis: accumulateApis(lifetime.apis, liveUsage.apis, lastUsage.apis),
+    requests_by_hour: accumulateMap(lifetime.requests_by_hour, liveUsage.requests_by_hour, lastUsage.requests_by_hour),
+    requests_by_day: accumulateMap(lifetime.requests_by_day, liveUsage.requests_by_day, lastUsage.requests_by_day),
+    tokens_by_hour: accumulateMap(lifetime.tokens_by_hour, liveUsage.tokens_by_hour, lastUsage.tokens_by_hour),
+    tokens_by_day: accumulateMap(lifetime.tokens_by_day, liveUsage.tokens_by_day, lastUsage.tokens_by_day),
+  };
+}
+
+/**
+ * Accumulate per-key map via delta (live - last).
+ */
+function accumulateMap(
+  lifetime: Record<string, number>,
+  live: Record<string, number>,
+  last: Record<string, number>
+): Record<string, number> {
+  const result = { ...lifetime };
+  for (const key of Object.keys(live)) {
+    const liveVal = live[key] ?? 0;
+    const lastVal = last[key] ?? 0;
+    const delta = liveVal - lastVal;
+    result[key] = (result[key] ?? 0) + delta;
+  }
+  return result;
+}
+
+/**
+ * Accumulate per-provider per-model apis via delta.
+ */
+function accumulateApis(
+  lifetime: Record<string, Record<string, ModelStats>>,
+  live: Record<string, Record<string, ModelStats>>,
+  last: Record<string, Record<string, ModelStats>>
+): Record<string, Record<string, ModelStats>> {
+  const result: Record<string, Record<string, ModelStats>> = JSON.parse(JSON.stringify(lifetime));
+
+  for (const [provider, models] of Object.entries(live)) {
+    if (!result[provider]) result[provider] = {};
+    for (const [model, liveStats] of Object.entries(models)) {
+      const lastStats = last[provider]?.[model];
+      const lifetimeStats = result[provider][model] ?? { requests: 0, tokens: 0, success: 0, failure: 0 };
+
+      const deltaRequests = liveStats.requests - (lastStats?.requests ?? 0);
+      const deltaTokens = liveStats.tokens - (lastStats?.tokens ?? 0);
+      const deltaSuccess = liveStats.success - (lastStats?.success ?? 0);
+      const deltaFailure = liveStats.failure - (lastStats?.failure ?? 0);
+
+      result[provider][model] = {
+        requests: lifetimeStats.requests + deltaRequests,
+        tokens: lifetimeStats.tokens + deltaTokens,
+        success: lifetimeStats.success + deltaSuccess,
+        failure: lifetimeStats.failure + deltaFailure,
+      };
+    }
+  }
+
+  return result;
+}
 
 // ---------------------------------------------------------------------------
 // Cache helpers
@@ -334,38 +391,59 @@ const providerStats = createMemo((): ProviderStat[] => {
 interface UsageCache {
   fetchedAt: number;
   data: UsageResponse;
+  /** Lifetime accumulator — survives proxy restarts */
+  lifetime?: LifetimeAccumulator;
+  /** Last live snapshot used to compute deltas */
+  lastSnapshot?: UsageResponse;
 }
 
-let persistTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingPersist: UsageResponse | null = null;
-
-/** Persist accumulator data to cache with debounce to reduce I/O churn. */
-function schedulePersistUsageCache(data: UsageResponse): void {
-  pendingPersist = data;
-  if (persistTimer !== null) return;
-
-  persistTimer = setTimeout(() => {
-    const payload = pendingPersist;
-    pendingPersist = null;
-    persistTimer = null;
-    if (!payload) return;
-
-    saveToDiskCache(payload);
-  }, 2_000);
+/** Lifetime accumulator — tracks totals across proxy restarts via delta accumulation */
+interface LifetimeAccumulator {
+  total_requests: number;
+  success_count: number;
+  failure_count: number;
+  total_tokens: number;
+  /** Per-provider → per-model breakdown */
+  apis: Record<string, Record<string, ModelStats>>;
+  /** Map of hour string ("0"–"23") → request count */
+  requests_by_hour: Record<string, number>;
+  /** Map of date string ("YYYY-MM-DD") → request count */
+  requests_by_day: Record<string, number>;
+  /** Map of hour string ("0"–"23") → token count */
+  tokens_by_hour: Record<string, number>;
+  /** Map of date string ("YYYY-MM-DD") → token count */
+  tokens_by_day: Record<string, number>;
 }
 
-function saveToDiskCache(data: UsageResponse): void {
+/** Persist lifetime accumulator and last snapshot to both localStorage and disk cache. */
+async function schedulePersistUsageCache(data: UsageResponse): Promise<void> {
+  await saveToDiskCache(data);
+}
+
+async function saveToDiskCache(data: UsageResponse): Promise<void> {
+  const lifetime = lifetimeAccumulator();
+  const last = lastSnapshot();
+
   try {
-    const envelope: UsageCache = { fetchedAt: Date.now(), data };
+    const envelope: UsageCache = {
+      fetchedAt: Date.now(),
+      data,
+      lifetime: lifetime ?? undefined,
+      lastSnapshot: last ?? undefined,
+    };
     localStorage.setItem("aether:usage-cache", JSON.stringify(envelope));
-  } catch {
-    // Non-critical
+  } catch (error) {
+    // Non-critical (but keep observable for debugging)
+    console.warn("[analytics] failed to write localStorage usage cache", error);
   }
 
   // Also persist to disk via Tauri for cross-session durability
-  invoke("write_usage_cache", { data }).catch(() => {
-    // Non-critical
-  });
+  try {
+    await invoke("write_usage_cache", { data });
+  } catch (error) {
+    // Non-critical (but keep observable for debugging)
+    console.warn("[analytics] failed to write disk usage cache", error);
+  }
 }
 
 /**
@@ -379,12 +457,23 @@ async function loadFromDiskCache(): Promise<boolean> {
     const raw = localStorage.getItem("aether:usage-cache");
     if (raw) {
       const envelope = JSON.parse(raw) as UsageCache;
-      const existing = persistentAccumulator();
-      const merged = existing
-        ? mergeUsageResponse(envelope.data, existing)
-        : envelope.data;
-      setPersistentAccumulator(merged);
-      setUsageStats(merged);
+      setPersistentAccumulator(envelope.data);
+      setUsageStats(envelope.data);
+      
+      // Restore lifetime accumulator and last snapshot if available
+      if (envelope.lifetime) {
+        setLifetimeAccumulator(envelope.lifetime);
+      } else {
+        // Legacy cache without lifetime — initialize from snapshot
+        setLifetimeAccumulator(initLifetimeFromSnapshot(envelope.data));
+      }
+      
+      if (envelope.lastSnapshot) {
+        setLastSnapshot(envelope.lastSnapshot);
+      } else {
+        setLastSnapshot(envelope.data);
+      }
+      
       setCacheStatus({ source: "localStorage", at: envelope.fetchedAt });
       return true;
     }
@@ -397,12 +486,13 @@ async function loadFromDiskCache(): Promise<boolean> {
   try {
     const diskData = await invoke<UsageResponse | null>("read_usage_cache");
     if (diskData) {
-      const existing = persistentAccumulator();
-      const merged = existing
-        ? mergeUsageResponse(diskData, existing)
-        : diskData;
-      setPersistentAccumulator(merged);
-      setUsageStats(merged);
+      setPersistentAccumulator(diskData);
+      setUsageStats(diskData);
+      
+      // Disk cache has no lifetime data — initialize from snapshot
+      setLifetimeAccumulator(initLifetimeFromSnapshot(diskData));
+      setLastSnapshot(diskData);
+      
       // Disk cache has no fetchedAt — show cached badge without timestamp
       setCacheStatus({ source: "disk" });
       return true;
@@ -440,28 +530,34 @@ async function fetchStats(): Promise<void> {
       managementKey: key,
     });
 
-    // Merge live response with accumulated persistent state using max() for counters.
-    // This guards against proxy restarts resetting in-memory counters to 0.
-    const currentAccumulator = persistentAccumulator();
-    const merged = mergeUsageResponse(response, currentAccumulator);
+    // Delta accumulation: compute lifetime from (lifetime, live, last)
+    const currentLifetime = lifetimeAccumulator();
+    const currentLast = lastSnapshot();
+    
+    let newLifetime: LifetimeAccumulator;
+    if (!currentLifetime) {
+      // First fetch ever — initialize lifetime from live snapshot
+      newLifetime = initLifetimeFromSnapshot(response);
+    } else {
+      // Accumulate delta into lifetime
+      newLifetime = accumulateDelta(currentLifetime, response, currentLast);
+    }
 
-    setPersistentAccumulator(merged);
-    setUsageStats(merged);
+    // Update signals
+    setLifetimeAccumulator(newLifetime);
+    setLastSnapshot(response);
+    setPersistentAccumulator(response);
+    setUsageStats(response);
 
     const now = Date.now();
     setLastFetched(now);
-    // If we have a non-null accumulator and it differs from live, show "merged" badge
-    if (currentAccumulator !== null) {
-      setCacheStatus({ source: "merged", at: now });
-    } else {
-      setCacheStatus(null); // Pure live data — no badge
-    }
+    setCacheStatus(null); // Pure live data — no badge
     setHealth({
       lastSuccessSyncAt: now,
       consecutiveFailures: 0,
       dataQuality: "live",
     });
-    schedulePersistUsageCache(merged);
+    await schedulePersistUsageCache(response);
   } catch (e) {
     setError(e instanceof Error ? e.message : String(e));
 
@@ -501,7 +597,7 @@ async function init(): Promise<void> {
 }
 
 /** Start polling. Awaits init() before the interval so no races on first fetch. */
-async function startPolling(intervalMs = 30_000): Promise<void> {
+async function startPolling(intervalMs = 60_000): Promise<void> {
   if (pollInterval) clearInterval(pollInterval);
   await init();
   pollInterval = setInterval(fetchStats, intervalMs);
@@ -531,7 +627,7 @@ export const analyticsStore = {
   lastFetched,
   /**
    * Describes where the currently displayed data came from.
-   * null = live data. Non-null = cached/merged.
+   * null = live data. Non-null = cached.
    */
   cacheStatus,
   health,

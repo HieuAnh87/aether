@@ -180,7 +180,7 @@ const KpiCard: Component<KpiCardProps> = (props) => (
 const Analytics: Component = () => {
   onMount(() => {
     // startPolling is async — errors inside are captured in analyticsStore.error()
-    analyticsStore.startPolling(30_000).catch(() => {
+    analyticsStore.startPolling(60_000).catch(() => {
       // Polling init failure is already surfaced via analyticsStore.error()
     });
   });
@@ -203,7 +203,7 @@ const Analytics: Component = () => {
         data: analyticsStore.reqByHour(),
         backgroundColor: PRIMARY_BG,
         borderColor: PRIMARY,
-        borderWidth: 1.5,
+        borderWidth: 2,
         borderRadius: 3,
       },
     ],
@@ -286,12 +286,12 @@ const Analytics: Component = () => {
   const cachedBadgeText = () => {
     const status = cs();
     if (!status) return "";
-    if (status.source === "localStorage" || status.source === "merged") {
+    if (status.source === "localStorage") {
       const time = new Date(status.at).toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
       });
-      return status.source === "merged" ? `Merged ${time}` : `Cached from ${time}`;
+      return `Cached from ${time}`;
     }
     return "Cached"; // disk cache — no timestamp available
   };

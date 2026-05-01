@@ -463,7 +463,7 @@ fn normalize_usage_response(raw: serde_json::Value) -> UsageResponse {
                     let stats = ModelStats {
                         requests: parse_u64(model_val.get("total_requests")).max(parse_u64(model_val.get("requests"))),
                         tokens: parse_u64(model_val.get("total_tokens")).max(parse_u64(model_val.get("tokens"))),
-                        success: parse_u64(model_val.get("success")).max(parse_u64(model_val.get("total_requests"))),
+                        success: parse_u64(model_val.get("success")),
                         failure: parse_u64(model_val.get("failure")),
                     };
                     models_out.insert(model_name.clone(), stats);
@@ -474,7 +474,7 @@ fn normalize_usage_response(raw: serde_json::Value) -> UsageResponse {
                     let stats = ModelStats {
                         requests: parse_u64(model_val.get("requests")).max(parse_u64(model_val.get("total_requests"))),
                         tokens: parse_u64(model_val.get("tokens")).max(parse_u64(model_val.get("total_tokens"))),
-                        success: parse_u64(model_val.get("success")).max(parse_u64(model_val.get("total_requests"))),
+                        success: parse_u64(model_val.get("success")),
                         failure: parse_u64(model_val.get("failure")),
                     };
                     models_out.insert(model_name.clone(), stats);
@@ -512,49 +512,11 @@ fn trim_map_keep_recent(map: &mut std::collections::HashMap<String, u64>, keep: 
     }
 }
 
-fn merge_usage_response(existing: UsageResponse, incoming: UsageResponse) -> UsageResponse {
-    let mut merged = incoming.clone();
-
-    merged.failed_requests = merged.failed_requests.max(existing.failed_requests);
-    merged.usage.total_requests = merged.usage.total_requests.max(existing.usage.total_requests);
-    merged.usage.success_count = merged.usage.success_count.max(existing.usage.success_count);
-    merged.usage.failure_count = merged.usage.failure_count.max(existing.usage.failure_count);
-    merged.usage.total_tokens = merged.usage.total_tokens.max(existing.usage.total_tokens);
-
-    for (provider, existing_models) in existing.usage.apis {
-        let provider_entry = merged.usage.apis.entry(provider).or_default();
-        for (model, existing_stats) in existing_models {
-            let stats = provider_entry.entry(model).or_default();
-            stats.requests = stats.requests.max(existing_stats.requests);
-            stats.tokens = stats.tokens.max(existing_stats.tokens);
-            stats.success = stats.success.max(existing_stats.success);
-            stats.failure = stats.failure.max(existing_stats.failure);
-        }
-    }
-
-    for (k, v) in existing.usage.requests_by_hour {
-        let entry = merged.usage.requests_by_hour.entry(k).or_insert(0);
-        *entry = (*entry).max(v);
-    }
-    for (k, v) in existing.usage.requests_by_day {
-        let entry = merged.usage.requests_by_day.entry(k).or_insert(0);
-        *entry = (*entry).max(v);
-    }
-    for (k, v) in existing.usage.tokens_by_hour {
-        let entry = merged.usage.tokens_by_hour.entry(k).or_insert(0);
-        *entry = (*entry).max(v);
-    }
-    for (k, v) in existing.usage.tokens_by_day {
-        let entry = merged.usage.tokens_by_day.entry(k).or_insert(0);
-        *entry = (*entry).max(v);
-    }
-
-    trim_map_keep_recent(&mut merged.usage.requests_by_day, RETAIN_DAILY_POINTS);
-    trim_map_keep_recent(&mut merged.usage.tokens_by_day, RETAIN_DAILY_POINTS);
-    trim_map_keep_recent(&mut merged.usage.requests_by_hour, RETAIN_HOURLY_POINTS);
-    trim_map_keep_recent(&mut merged.usage.tokens_by_hour, RETAIN_HOURLY_POINTS);
-
-    merged
+fn trim_usage_response(data: &mut UsageResponse) {
+    trim_map_keep_recent(&mut data.usage.requests_by_day, RETAIN_DAILY_POINTS);
+    trim_map_keep_recent(&mut data.usage.tokens_by_day, RETAIN_DAILY_POINTS);
+    trim_map_keep_recent(&mut data.usage.requests_by_hour, RETAIN_HOURLY_POINTS);
+    trim_map_keep_recent(&mut data.usage.tokens_by_hour, RETAIN_HOURLY_POINTS);
 }
 
 /// Returns the path to the Aether usage cache file: ~/.config/aether/usage-cache.json
@@ -599,12 +561,12 @@ pub fn write_usage_cache(data: UsageResponse) -> Result<(), String> {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create config dir: {}", e))?;
     }
-    let merged = match read_usage_cache() {
-        Ok(Some(existing)) => merge_usage_response(existing, data),
-        _ => data,
-    };
+    // Backend-centric source-of-truth: persist the latest normalized snapshot
+    // from sidecar rather than max-merging with old cache values.
+    let mut latest = data;
+    trim_usage_response(&mut latest);
 
-    let content = serde_json::to_string(&merged)
+    let content = serde_json::to_string(&latest)
         .map_err(|e| format!("Failed to serialize usage cache: {}", e))?;
 
     // Atomic write: temp file + rename avoids partial writes/corruption.
