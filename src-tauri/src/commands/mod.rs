@@ -328,7 +328,7 @@ pub struct ModelStats {
 /// Response is wrapped: { "failed_requests": N, "usage": { ... } }
 /// Hour/day maps use string keys: { "0": 5, "1": 12, ... } or { "2026-05-01": 42 }
 /// apis field: { provider: { model: { requests, tokens, ... } } }
-#[derive(serde::Deserialize, serde::Serialize, Default)]
+#[derive(serde::Deserialize, serde::Serialize, Default, Clone)]
 pub struct UsageInner {
     #[serde(default)]
     pub total_requests: u64,
@@ -355,7 +355,7 @@ pub struct UsageInner {
     pub tokens_by_day: std::collections::HashMap<String, u64>,
 }
 
-#[derive(serde::Deserialize, serde::Serialize, Default)]
+#[derive(serde::Deserialize, serde::Serialize, Default, Clone)]
 pub struct UsageResponse {
     #[serde(default)]
     pub failed_requests: u64,
@@ -383,14 +383,179 @@ pub async fn fetch_usage_stats(port: u16, management_key: String) -> Result<Usag
         return Err(format!("Management API returned status {}", resp.status()));
     }
 
-    resp.json::<UsageResponse>()
+    let raw = resp
+        .json::<serde_json::Value>()
         .await
-        .map_err(|e| format!("Failed to parse usage stats: {}", e))
+        .map_err(|e| format!("Failed to parse usage stats JSON: {}", e))?;
+
+    Ok(normalize_usage_response(raw))
+}
+
+fn parse_u64(v: Option<&serde_json::Value>) -> u64 {
+    v.and_then(|x| x.as_u64()).unwrap_or(0)
+}
+
+fn normalize_usage_response(raw: serde_json::Value) -> UsageResponse {
+    let usage = raw.get("usage").and_then(|v| v.as_object());
+
+    let mut out = UsageResponse {
+        failed_requests: parse_u64(raw.get("failed_requests")),
+        usage: UsageInner {
+            total_requests: parse_u64(usage.and_then(|u| u.get("total_requests"))),
+            success_count: parse_u64(usage.and_then(|u| u.get("success_count"))),
+            failure_count: parse_u64(usage.and_then(|u| u.get("failure_count"))),
+            total_tokens: parse_u64(usage.and_then(|u| u.get("total_tokens"))),
+            ..UsageInner::default()
+        },
+    };
+
+    // requests/tokens by hour/day maps
+    if let Some(map) = usage
+        .and_then(|u| u.get("requests_by_hour"))
+        .and_then(|v| v.as_object())
+    {
+        for (k, v) in map {
+            out.usage.requests_by_hour.insert(k.clone(), parse_u64(Some(v)));
+        }
+    }
+    if let Some(map) = usage
+        .and_then(|u| u.get("requests_by_day"))
+        .and_then(|v| v.as_object())
+    {
+        for (k, v) in map {
+            out.usage.requests_by_day.insert(k.clone(), parse_u64(Some(v)));
+        }
+    }
+    if let Some(map) = usage
+        .and_then(|u| u.get("tokens_by_hour"))
+        .and_then(|v| v.as_object())
+    {
+        for (k, v) in map {
+            out.usage.tokens_by_hour.insert(k.clone(), parse_u64(Some(v)));
+        }
+    }
+    if let Some(map) = usage
+        .and_then(|u| u.get("tokens_by_day"))
+        .and_then(|v| v.as_object())
+    {
+        for (k, v) in map {
+            out.usage.tokens_by_day.insert(k.clone(), parse_u64(Some(v)));
+        }
+    }
+
+    // Support both shapes:
+    // 1) apis: { provider: { model: { requests, tokens, ... } } }
+    // 2) apis: { provider: { models: { model: { total_requests, total_tokens, details... } } } }
+    if let Some(apis) = usage
+        .and_then(|u| u.get("apis"))
+        .and_then(|v| v.as_object())
+    {
+        for (provider_name, provider_val) in apis {
+            let mut models_out: std::collections::HashMap<String, ModelStats> =
+                std::collections::HashMap::new();
+
+            // Shape 2
+            if let Some(models) = provider_val
+                .get("models")
+                .and_then(|v| v.as_object())
+            {
+                for (model_name, model_val) in models {
+                    let stats = ModelStats {
+                        requests: parse_u64(model_val.get("total_requests")).max(parse_u64(model_val.get("requests"))),
+                        tokens: parse_u64(model_val.get("total_tokens")).max(parse_u64(model_val.get("tokens"))),
+                        success: parse_u64(model_val.get("success")).max(parse_u64(model_val.get("total_requests"))),
+                        failure: parse_u64(model_val.get("failure")),
+                    };
+                    models_out.insert(model_name.clone(), stats);
+                }
+            } else if let Some(models) = provider_val.as_object() {
+                // Shape 1
+                for (model_name, model_val) in models {
+                    let stats = ModelStats {
+                        requests: parse_u64(model_val.get("requests")).max(parse_u64(model_val.get("total_requests"))),
+                        tokens: parse_u64(model_val.get("tokens")).max(parse_u64(model_val.get("total_tokens"))),
+                        success: parse_u64(model_val.get("success")).max(parse_u64(model_val.get("total_requests"))),
+                        failure: parse_u64(model_val.get("failure")),
+                    };
+                    models_out.insert(model_name.clone(), stats);
+                }
+            }
+
+            out.usage.apis.insert(provider_name.clone(), models_out);
+        }
+    }
+
+    if out.usage.failure_count == 0 {
+        out.usage.failure_count = out.failed_requests;
+    }
+
+    out
 }
 
 // ---------------------------------------------------------------------------
 // Usage cache persistence (offline analytics)
 // ---------------------------------------------------------------------------
+
+const RETAIN_DAILY_POINTS: usize = 90;
+const RETAIN_HOURLY_POINTS: usize = 168;
+
+fn trim_map_keep_recent(map: &mut std::collections::HashMap<String, u64>, keep: usize) {
+    if map.len() <= keep {
+        return;
+    }
+
+    let mut keys: Vec<String> = map.keys().cloned().collect();
+    keys.sort();
+    let remove_count = keys.len().saturating_sub(keep);
+    for key in keys.into_iter().take(remove_count) {
+        map.remove(&key);
+    }
+}
+
+fn merge_usage_response(existing: UsageResponse, incoming: UsageResponse) -> UsageResponse {
+    let mut merged = incoming.clone();
+
+    merged.failed_requests = merged.failed_requests.max(existing.failed_requests);
+    merged.usage.total_requests = merged.usage.total_requests.max(existing.usage.total_requests);
+    merged.usage.success_count = merged.usage.success_count.max(existing.usage.success_count);
+    merged.usage.failure_count = merged.usage.failure_count.max(existing.usage.failure_count);
+    merged.usage.total_tokens = merged.usage.total_tokens.max(existing.usage.total_tokens);
+
+    for (provider, existing_models) in existing.usage.apis {
+        let provider_entry = merged.usage.apis.entry(provider).or_default();
+        for (model, existing_stats) in existing_models {
+            let stats = provider_entry.entry(model).or_default();
+            stats.requests = stats.requests.max(existing_stats.requests);
+            stats.tokens = stats.tokens.max(existing_stats.tokens);
+            stats.success = stats.success.max(existing_stats.success);
+            stats.failure = stats.failure.max(existing_stats.failure);
+        }
+    }
+
+    for (k, v) in existing.usage.requests_by_hour {
+        let entry = merged.usage.requests_by_hour.entry(k).or_insert(0);
+        *entry = (*entry).max(v);
+    }
+    for (k, v) in existing.usage.requests_by_day {
+        let entry = merged.usage.requests_by_day.entry(k).or_insert(0);
+        *entry = (*entry).max(v);
+    }
+    for (k, v) in existing.usage.tokens_by_hour {
+        let entry = merged.usage.tokens_by_hour.entry(k).or_insert(0);
+        *entry = (*entry).max(v);
+    }
+    for (k, v) in existing.usage.tokens_by_day {
+        let entry = merged.usage.tokens_by_day.entry(k).or_insert(0);
+        *entry = (*entry).max(v);
+    }
+
+    trim_map_keep_recent(&mut merged.usage.requests_by_day, RETAIN_DAILY_POINTS);
+    trim_map_keep_recent(&mut merged.usage.tokens_by_day, RETAIN_DAILY_POINTS);
+    trim_map_keep_recent(&mut merged.usage.requests_by_hour, RETAIN_HOURLY_POINTS);
+    trim_map_keep_recent(&mut merged.usage.tokens_by_hour, RETAIN_HOURLY_POINTS);
+
+    merged
+}
 
 /// Returns the path to the Aether usage cache file: ~/.config/aether/usage-cache.json
 ///
@@ -434,10 +599,20 @@ pub fn write_usage_cache(data: UsageResponse) -> Result<(), String> {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create config dir: {}", e))?;
     }
-    let content = serde_json::to_string(&data)
+    let merged = match read_usage_cache() {
+        Ok(Some(existing)) => merge_usage_response(existing, data),
+        _ => data,
+    };
+
+    let content = serde_json::to_string(&merged)
         .map_err(|e| format!("Failed to serialize usage cache: {}", e))?;
-    std::fs::write(&path, content)
-        .map_err(|e| format!("Failed to write usage cache: {}", e))
+
+    // Atomic write: temp file + rename avoids partial writes/corruption.
+    let tmp_path = path.with_extension("json.tmp");
+    std::fs::write(&tmp_path, content)
+        .map_err(|e| format!("Failed to write usage cache temp file: {}", e))?;
+    std::fs::rename(&tmp_path, &path)
+        .map_err(|e| format!("Failed to replace usage cache atomically: {}", e))
 }
 
 // ---------------------------------------------------------------------------

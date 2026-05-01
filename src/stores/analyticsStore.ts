@@ -56,6 +56,12 @@ export type CacheStatus =
   | { source: "localStorage"; at: number }
   | { source: "disk" };
 
+export interface AnalyticsHealth {
+  lastSuccessSyncAt: number | null;
+  consecutiveFailures: number;
+  dataQuality: "live" | "degraded";
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -82,6 +88,11 @@ const [lastFetched, setLastFetched] = createSignal<number | null>(null);
  * Non-null = data came from cache (proxy was offline or this is first render).
  */
 const [cacheStatus, setCacheStatus] = createSignal<CacheStatus | null>(null);
+const [health, setHealth] = createSignal<AnalyticsHealth>({
+  lastSuccessSyncAt: null,
+  consecutiveFailures: 0,
+  dataQuality: "live",
+});
 
 // ---------------------------------------------------------------------------
 // Computed / derived
@@ -194,7 +205,24 @@ async function loadFromDiskCache(): Promise<boolean> {
   return false;
 }
 
-/** Persist live data to cache. Always writes — every 30s is cheap and avoids stale distributions. */
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingPersist: UsageResponse | null = null;
+
+/** Persist live data to cache with debounce to reduce I/O churn. */
+function schedulePersistUsageCache(data: UsageResponse): void {
+  pendingPersist = data;
+  if (persistTimer !== null) return;
+
+  persistTimer = setTimeout(() => {
+    const payload = pendingPersist;
+    pendingPersist = null;
+    persistTimer = null;
+    if (!payload) return;
+
+    saveToDiskCache(payload);
+  }, 2_000);
+}
+
 function saveToDiskCache(data: UsageResponse): void {
   try {
     const envelope: UsageCache = { fetchedAt: Date.now(), data };
@@ -222,12 +250,12 @@ async function fetchStats(): Promise<void> {
   setLoading(true);
   setError(null);
   try {
-    const settings = await invoke<{ proxy_port: number; management_key: string }>(
+    const settings = await invoke<{ proxyPort: number; managementKey: string }>(
       "get_settings",
     );
 
-    const port = settings.proxy_port ?? 8317;
-    const key = settings.management_key ?? "aether-managed";
+    const port = settings.proxyPort ?? 8317;
+    const key = settings.managementKey ?? "aether-managed";
 
     // Rust command deserializes to UsageResponse — no JSON.parse needed
     const response = await invoke<UsageResponse>("fetch_usage_stats", {
@@ -236,15 +264,35 @@ async function fetchStats(): Promise<void> {
     });
 
     setUsageStats(response);
-    setLastFetched(Date.now());
+    const now = Date.now();
+    setLastFetched(now);
     setCacheStatus(null); // Live data — clear cache badge
-    saveToDiskCache(response);
+    setHealth({
+      lastSuccessSyncAt: now,
+      consecutiveFailures: 0,
+      dataQuality: "live",
+    });
+    schedulePersistUsageCache(response);
   } catch (e) {
     setError(e instanceof Error ? e.message : String(e));
 
+    const nextFailures = health().consecutiveFailures + 1;
+    setHealth({
+      lastSuccessSyncAt: health().lastSuccessSyncAt,
+      consecutiveFailures: nextFailures,
+      dataQuality: nextFailures >= 2 ? "degraded" : health().dataQuality,
+    });
+
     // Proxy offline — load from cache only if we have no live data yet
     if (usageStats() === null) {
-      await loadFromDiskCache();
+      const loadedFromCache = await loadFromDiskCache();
+      if (loadedFromCache) {
+        setHealth({
+          lastSuccessSyncAt: health().lastSuccessSyncAt,
+          consecutiveFailures: nextFailures,
+          dataQuality: "degraded",
+        });
+      }
     }
   } finally {
     setLoading(false);
@@ -297,6 +345,7 @@ export const analyticsStore = {
    * null = live data. Non-null = cached (proxy was offline or first render).
    */
   cacheStatus,
+  health,
   // Computed
   totalRequests,
   totalTokens,

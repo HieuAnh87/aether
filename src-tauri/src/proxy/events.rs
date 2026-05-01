@@ -65,7 +65,7 @@ pub fn start_event_stream(app: tauri::AppHandle, port: u16) {
 
     tauri::async_runtime::spawn(async move {
         // Use 127.0.0.1 explicitly — avoids macOS IPv6/IPv4 resolution ambiguity
-        let url = format!("ws://127.0.0.1:{}/events", port);
+        let url = format!("ws://127.0.0.1:{}/v1/ws", port);
         log::info!("Connecting to sidecar event stream: {}", url);
 
         app.emit(

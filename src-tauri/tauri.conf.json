@@ -62,10 +62,7 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": [
-      "dmg",
-      "app"
-    ],
+    "targets": "all",
     "externalBin": [
       "binaries/cliproxyapi"
     ],

@@ -277,6 +277,13 @@ const Analytics: Component = () => {
   };
 
   const proxyOffline = () => !analyticsStore.loading() && analyticsStore.error() !== null;
+  const health = () => analyticsStore.health();
+  const degraded = () => health().dataQuality === "degraded";
+  const lastSuccessSyncText = () => {
+    const ts = health().lastSuccessSyncAt;
+    if (ts === null) return "never";
+    return new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  };
 
   /** Reactive — computed each render so it stays correct after midnight */
   const todaySub = () =>
@@ -315,6 +322,16 @@ const Analytics: Component = () => {
       </div>
 
       {/* ── Offline banner ── */}
+      <Show when={degraded() && !proxyOffline()}>
+        <div class="glass rounded-lg p-4 border border-amber-500/20 bg-amber-500/5">
+          <p class="font-body text-amber-400/85 text-sm">
+            ⚠ Analytics is in degraded mode ({health().consecutiveFailures} sync failure{health().consecutiveFailures > 1 ? "s" : ""}).
+            Showing best-known values from local cache.
+          </p>
+          <p class="font-caption text-text-muted mt-1 text-xs">Last successful sync: {lastSuccessSyncText()}</p>
+        </div>
+      </Show>
+
       <Show when={proxyOffline()}>
         <div class="glass rounded-lg p-4 border border-yellow-500/20 bg-yellow-500/5">
           <p class="font-body text-yellow-400/80 text-sm">
