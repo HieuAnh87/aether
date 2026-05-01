@@ -1,5 +1,5 @@
 import { type Component, createMemo, onMount, onCleanup, Show, For } from "solid-js";
-import type { CacheStatus } from "../stores/analyticsStore";
+import type { CacheStatus, TimeRange } from "../stores/analyticsStore";
 import {
   Chart,
   CategoryScale,
@@ -122,6 +122,14 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) =>
   `${String(i).padStart(2, "0")}:00`,
 );
 
+const TIME_RANGES: { label: string; value: TimeRange }[] = [
+  { label: "Today", value: "today" },
+  { label: "7D", value: "7d" },
+  { label: "30D", value: "30d" },
+  { label: "Month", value: "month" },
+  { label: "All", value: "all" },
+];
+
 // ---------------------------------------------------------------------------
 // Shared formatting helpers
 // ---------------------------------------------------------------------------
@@ -179,9 +187,11 @@ const Analytics: Component = () => {
   onCleanup(() => analyticsStore.stopPolling());
 
   // Derived display values
-  const totalReqs = () => analyticsStore.totalRequests().toLocaleString();
-  const totalToks = () => formatTokens(analyticsStore.totalTokens());
+  const totalReqs = () => analyticsStore.filteredTotalRequests().toLocaleString();
+  const totalToks = () => formatTokens(analyticsStore.filteredTotalTokens());
   const todayReqs = () => analyticsStore.todayRequests().toLocaleString();
+  const failedReqs = () => analyticsStore.filteredFailedRequests().toLocaleString();
+  const activeRange = () => analyticsStore.timeRange();
   const isInitialLoad = () => analyticsStore.loading() && analyticsStore.usageStats() === null;
 
   // Chart data memos — new object references trigger solid-chartjs reactive updates
@@ -216,7 +226,7 @@ const Analytics: Component = () => {
   }));
 
   const reqDayData = createMemo((): ChartData<"bar"> => {
-    const days = analyticsStore.reqByDay();
+    const days = analyticsStore.filteredReqByDay();
     return {
       labels: days.map((d) => {
         // Parse as local date (append T00:00:00 avoids UTC interpretation)
@@ -234,6 +244,16 @@ const Analytics: Component = () => {
         },
       ],
     };
+  });
+
+  const dailyChartTitle = createMemo(() => {
+    switch (activeRange()) {
+      case "today": return "Daily — Today";
+      case "7d": return "Daily — Last 7 Days";
+      case "30d": return "Daily — Last 30 Days";
+      case "month": return "Daily — This Month";
+      case "all": return "Daily — All Time";
+    }
   });
 
   /** Doughnut chart data for provider breakdown */
@@ -266,12 +286,12 @@ const Analytics: Component = () => {
   const cachedBadgeText = () => {
     const status = cs();
     if (!status) return "";
-    if (status.source === "localStorage") {
+    if (status.source === "localStorage" || status.source === "merged") {
       const time = new Date(status.at).toLocaleTimeString("en-US", {
         hour: "2-digit",
         minute: "2-digit",
       });
-      return `Cached from ${time}`;
+      return status.source === "merged" ? `Merged ${time}` : `Cached from ${time}`;
     }
     return "Cached"; // disk cache — no timestamp available
   };
@@ -285,9 +305,15 @@ const Analytics: Component = () => {
     return new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
   };
 
-  /** Reactive — computed each render so it stays correct after midnight */
-  const todaySub = () =>
-    new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const rangeSub = () => {
+    switch (activeRange()) {
+      case "today": return "today";
+      case "7d": return "last 7 days";
+      case "30d": return "last 30 days";
+      case "month": return "this month";
+      case "all": return "all time";
+    }
+  };
 
   return (
     <div class="space-y-6">
@@ -309,6 +335,23 @@ const Analytics: Component = () => {
           <Show when={lastFetchedStr() && !proxyOffline()}>
             <span class="font-caption text-text-muted">Live {lastFetchedStr()}</span>
           </Show>
+          {/* Time range filter */}
+          <div class="flex items-center rounded-md bg-white/[0.04] p-0.5 gap-0.5">
+            <For each={TIME_RANGES}>
+              {(tr) => (
+                <button
+                  onClick={() => analyticsStore.setTimeRange(tr.value)}
+                  class={`px-2.5 py-1 rounded text-xs font-caption transition-colors ${
+                    activeRange() === tr.value
+                      ? "bg-white/10 text-text"
+                      : "text-text-muted hover:text-text"
+                  }`}
+                >
+                  {tr.label}
+                </button>
+              )}
+            </For>
+          </div>
           <button
             onClick={() => analyticsStore.refresh()}
             disabled={analyticsStore.loading()}
@@ -348,28 +391,28 @@ const Analytics: Component = () => {
         <KpiCard
           label="Total Requests"
           value={totalReqs()}
-          sub="all time"
+          sub={rangeSub()}
           icon="📡"
           loading={isInitialLoad()}
         />
         <KpiCard
           label="Today's Requests"
           value={todayReqs()}
-          sub={todaySub()}
+          sub="today only"
           icon="📅"
           loading={isInitialLoad()}
         />
         <KpiCard
           label="Total Tokens"
           value={totalToks()}
-          sub="all time"
+          sub={rangeSub()}
           icon="🪙"
           loading={isInitialLoad()}
         />
         <KpiCard
           label="Failed Requests"
-          value={analyticsStore.failedRequests().toLocaleString()}
-          sub="all time"
+          value={failedReqs()}
+          sub={rangeSub()}
           icon="⚠️"
           loading={isInitialLoad()}
         />
@@ -407,7 +450,7 @@ const Analytics: Component = () => {
         {/* Daily trend — takes 2/3 width */}
         <GlassCard class="lg:col-span-2">
           <h3 class="font-section-header text-text mb-4">
-            Daily Request Trend (last 7 days)
+            {dailyChartTitle()}
           </h3>
           <Show
             when={analyticsStore.reqByDay().length > 0}
