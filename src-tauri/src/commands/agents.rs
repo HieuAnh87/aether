@@ -236,24 +236,46 @@ fn configure_codex(
     let codex_dir = home.join(".codex");
     std::fs::create_dir_all(&codex_dir).map_err(|e| e.to_string())?;
 
-    let config_content = format!(
-        "model_provider = \"aether\"\n\
-         model = \"gpt-5-codex\"\n\
-         model_reasoning_effort = \"high\"\n\
-         \n\
-         [model_providers.aether]\n\
-         name = \"aether\"\n\
-         base_url = \"{}/v1\"\n\
-         wire_api = \"responses\"\n",
-        endpoint
-    );
-
     let config_path = codex_dir.join("config.toml");
-    std::fs::write(&config_path, &config_content).map_err(|e| e.to_string())?;
 
-    let auth_content = "{\n  \"OPENAI_API_KEY\": \"aether-managed\"\n}";
+    // Read + merge into existing TOML to avoid destroying user settings.
+    // We use raw string manipulation rather than pulling in the `toml` crate,
+    // since we only need to upsert a handful of known keys.
+    let existing = if config_path.exists() {
+        std::fs::read_to_string(&config_path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+
+    let aether_url = format!("{}/v1", endpoint);
+    let merged = merge_codex_toml(&existing, &aether_url);
+
+    std::fs::write(&config_path, &merged).map_err(|e| e.to_string())?;
+
+    // Merge auth.json — only set OPENAI_API_KEY if not already present.
     let auth_path = codex_dir.join("auth.json");
-    std::fs::write(&auth_path, auth_content).map_err(|e| e.to_string())?;
+    let existing_auth = if auth_path.exists() {
+        std::fs::read_to_string(&auth_path)
+            .ok()
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+            .unwrap_or_else(|| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    let mut auth_obj = existing_auth;
+    // Only overwrite the API key if it isn't already "aether-managed"
+    if auth_obj
+        .get("OPENAI_API_KEY")
+        .and_then(|v| v.as_str())
+        .map(|k| k != "aether-managed")
+        .unwrap_or(true)
+    {
+        auth_obj["OPENAI_API_KEY"] = serde_json::json!("aether-managed");
+    }
+    let auth_content =
+        serde_json::to_string_pretty(&auth_obj).map_err(|e| e.to_string())?;
+    std::fs::write(&auth_path, &auth_content).map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({
         "success": true,
@@ -262,6 +284,74 @@ fn configure_codex(
         "authPath": auth_path.to_string_lossy(),
         "instructions": "Codex CLI configured. Run 'codex' to start using it."
     }))
+}
+
+/// Merge Aether-specific keys into an existing Codex config.toml string.
+/// Upserts: model_provider, model, model_reasoning_effort, [model_providers.aether].
+fn merge_codex_toml(existing: &str, aether_url: &str) -> String {
+    // Parse lines, updating known scalar keys, then append provider section if missing.
+    let mut lines: Vec<String> = existing.lines().map(|l| l.to_string()).collect();
+    let mut set_provider = false;
+    let mut set_model = false;
+    let mut set_effort = false;
+
+    for line in &mut lines {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("model_provider") && !trimmed.starts_with("model_providers") {
+            *line = "model_provider = \"aether\"".to_string();
+            set_provider = true;
+        } else if trimmed.starts_with("model ") || trimmed.starts_with("model=") {
+            *line = "model = \"gpt-5-codex\"".to_string();
+            set_model = true;
+        } else if trimmed.starts_with("model_reasoning_effort") {
+            *line = "model_reasoning_effort = \"high\"".to_string();
+            set_effort = true;
+        }
+    }
+
+    // Prepend any missing scalar keys at the top
+    let mut header = String::new();
+    if !set_effort {
+        header.push_str("model_reasoning_effort = \"high\"\n");
+    }
+    if !set_model {
+        header.push_str("model = \"gpt-5-codex\"\n");
+    }
+    if !set_provider {
+        header.push_str("model_provider = \"aether\"\n");
+    }
+
+    let body = if header.is_empty() {
+        lines.join("\n")
+    } else {
+        format!("{}{}", header, lines.join("\n"))
+    };
+
+    // Upsert [model_providers.aether] section
+    let section_header = "[model_providers.aether]";
+    if body.contains(section_header) {
+        // Update the base_url line within the existing section
+        let updated = body
+            .lines()
+            .map(|l| {
+                if l.trim_start().starts_with("base_url") {
+                    format!("base_url = \"{}\"", aether_url)
+                } else {
+                    l.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        updated
+    } else {
+        format!(
+            "{}\n\n{}\n\
+             name = \"aether\"\n\
+             base_url = \"{}\"\n\
+             wire_api = \"responses\"\n",
+            body, section_header, aether_url
+        )
+    }
 }
 
 fn configure_gemini_cli(endpoint: &str) -> Result<serde_json::Value, String> {
@@ -460,6 +550,8 @@ fn which_exists(cmd: &str) -> bool {
         home.join(".npm-global/bin"),
         // npm global (alternative)
         std::path::PathBuf::from("/usr/local/lib/node_modules/.bin"),
+        // Homebrew node modules
+        std::path::PathBuf::from("/opt/homebrew/lib/node_modules/.bin"),
         // Local bin
         home.join(".local/bin"),
         // Go binaries
@@ -468,6 +560,13 @@ fn which_exists(cmd: &str) -> bool {
         home.join(".bun/bin"),
         // OpenCode CLI
         home.join(".opencode/bin"),
+        // Volta managed binaries
+        home.join(".volta/bin"),
+        // pnpm global store (macOS default)
+        home.join("Library/pnpm"),
+        // mise/asdf shims
+        home.join(".local/share/mise/shims"),
+        home.join(".asdf/shims"),
     ];
 
     // NVM node versions
@@ -483,6 +582,12 @@ fn which_exists(cmd: &str) -> bool {
         }
     }
 
+    // fnm (Fast Node Manager) — default alias symlinks
+    let fnm_dir = home.join(".fnm/aliases/default/bin");
+    if fnm_dir.exists() {
+        paths.push(fnm_dir);
+    }
+
     for path in &paths {
         if path.join(cmd).exists() {
             return true;
@@ -493,6 +598,13 @@ fn which_exists(cmd: &str) -> bool {
 }
 
 /// Check whether an environment variable starts with `expected_prefix`.
+///
+/// # ⚠️ macOS sandbox limitation
+/// Sandboxed macOS apps do NOT inherit the user's shell environment
+/// (~/.zshrc, ~/.bashrc, etc.), so `std::env::var` will almost always
+/// return `Err` for user-defined variables. This function is therefore
+/// unreliable for detecting env-only configured agents (Gemini CLI, Kiro)
+/// and should only be used as a best-effort fallback.
 fn check_env_configured(var: &str, expected_prefix: &str) -> bool {
     std::env::var(var)
         .map(|v| v.starts_with(expected_prefix))

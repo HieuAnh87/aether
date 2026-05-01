@@ -2,7 +2,7 @@ import type { Component, JSX } from "solid-js";
 import { onCleanup } from "solid-js";
 import { Router, Route, useLocation, useNavigate } from "@solidjs/router";
 import { AppShell, Sidebar, NavItem, NavGroup, ToastProvider } from "./components";
-import { Dashboard, Analytics, Presets, Monitor, Logs, Agents, AgentProviders, Settings, CliproxyOverview, CliproxyProviders, CliproxyControlPanel, Popup } from "./pages";
+import { Dashboard, Analytics, Presets, Monitor, Logs, Agents, AgentProviders, Accounts, Settings, CliproxyOverview, CliproxyProviders, CliproxyControlPanel, Popup } from "./pages";
 import { proxyStore } from "./stores/proxyStore";
 import { initConfigWatcher, cleanupConfigWatcher } from "./stores/configWatcher";
 
@@ -163,12 +163,22 @@ const AppLayout: Component<{ children?: JSX.Element }> = (props) => {
             onClick={() => navigate("/agents/presets")}
           />
         </NavGroup>
-        <NavItem
+        <NavGroup
           icon={<IconSettings />}
           label="Settings"
-          active={location.pathname === "/settings"}
-          onClick={() => navigate("/settings")}
-        />
+          defaultOpen={location.pathname.startsWith("/settings")}
+        >
+          <NavItem
+            label="General"
+            active={location.pathname === "/settings"}
+            onClick={() => navigate("/settings")}
+          />
+          <NavItem
+            label="Accounts"
+            active={location.pathname === "/settings/accounts"}
+            onClick={() => navigate("/settings/accounts")}
+          />
+        </NavGroup>
       </nav>
     </Sidebar>
   );
@@ -198,6 +208,7 @@ const App: Component = () => {
           <Route path="/agents/providers" component={AgentProviders} />
           <Route path="/agents/presets" component={Presets} />
           <Route path="/settings" component={Settings} />
+          <Route path="/settings/accounts" component={Accounts} />
         </Route>
       </Router>
     </ToastProvider>

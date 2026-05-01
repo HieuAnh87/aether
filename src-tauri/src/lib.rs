@@ -89,8 +89,18 @@ pub fn run() {
             commands::get_settings,
             commands::update_settings,
             commands::show_main_window,
+            commands::fetch_usage_stats,
+            commands::read_usage_cache,
+            commands::write_usage_cache,
             commands::agents::detect_cli_agents,
             commands::agents::configure_cli_agent,
+            commands::agent_providers::get_agent_providers,
+            commands::agent_providers::get_well_known_providers,
+            commands::agent_providers::add_agent_provider,
+            commands::agent_providers::update_agent_provider,
+            commands::agent_providers::delete_agent_provider,
+            commands::agent_providers::fetch_provider_models,
+            commands::agent_providers::validate_agent_provider_key,
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {

@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { createSignal, createEffect, Show } from "solid-js";
+import { createSignal, createEffect, For, Show } from "solid-js";
 import Modal from "./Modal";
 import Button from "./Button";
 import Input from "./Input";
@@ -43,9 +43,9 @@ const AddAccountModal: Component<AddAccountModalProps> = (props) => {
       const valid = await accountStore.validateKey(provider(), key().trim());
       setValidated(valid);
       if (!valid) setError("API key appears to be invalid");
-    } catch (e: any) {
+    } catch (e: unknown) {
       setValidated(false);
-      setError(e.toString());
+      setError(String(e));
     } finally {
       setValidating(false);
     }
@@ -56,6 +56,19 @@ const AddAccountModal: Component<AddAccountModalProps> = (props) => {
     setSaving(true);
     setError("");
     try {
+      // Auto-validate before saving (failure still proceeds)
+      setValidating(true);
+      try {
+        const valid = await accountStore.validateKey(provider(), key().trim());
+        setValidated(valid);
+        if (!valid) setError("API key appears to be invalid — saved anyway");
+      } catch {
+        // Validation network error — still save the key
+        setValidated(null);
+      } finally {
+        setValidating(false);
+      }
+
       if (props.editProvider) {
         await accountStore.updateKey(provider(), key().trim());
       } else {
@@ -63,8 +76,8 @@ const AddAccountModal: Component<AddAccountModalProps> = (props) => {
       }
       props.onSuccess(provider());
       props.onClose();
-    } catch (e: any) {
-      setError(e.toString());
+    } catch (e: unknown) {
+      setError(String(e));
     } finally {
       setSaving(false);
     }
@@ -85,25 +98,27 @@ const AddAccountModal: Component<AddAccountModalProps> = (props) => {
           <div>
             <label class="mb-1 block font-caption text-text-secondary">Provider</label>
             <div class="flex gap-2">
-              {(["anthropic", "openai", "google"] as const).map((p) => {
-                const meta = accountStore.getProviderMeta(p);
-                return (
-                  <button
-                    class={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
-                      provider() === p
-                        ? "bg-glass-bg border border-primary text-text"
-                        : "border border-border text-text-secondary hover:border-text-muted"
-                    }`}
-                    onClick={() => setProvider(p)}
-                  >
-                    <span
-                      class="inline-block h-3 w-3 rounded-full"
-                      style={{ "background-color": meta.color }}
-                    />
-                    {meta.name}
-                  </button>
-                );
-              })}
+              <For each={["anthropic", "openai", "google"] as const}>
+                {(p) => {
+                  const meta = accountStore.getProviderMeta(p);
+                  return (
+                    <button
+                      class={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+                        provider() === p
+                          ? "bg-glass-bg border border-primary text-text"
+                          : "border border-border text-text-secondary hover:border-text-muted"
+                      }`}
+                      onClick={() => setProvider(p)}
+                    >
+                      <span
+                        class="inline-block h-3 w-3 rounded-full"
+                        style={{ "background-color": meta.color }}
+                      />
+                      {meta.name}
+                    </button>
+                  );
+                }}
+              </For>
             </div>
           </div>
         </Show>

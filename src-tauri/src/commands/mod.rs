@@ -1,3 +1,4 @@
+pub mod agent_providers;
 pub mod agents;
 
 use std::collections::HashMap;
@@ -210,12 +211,12 @@ pub async fn validate_api_key(
     let client = reqwest::Client::new();
     let result = match provider.as_str() {
         "anthropic" => {
+            // Use /v1/models (lightweight list) instead of posting a message.
+            // The deprecated claude-3-haiku-20240307 model was previously used here.
             client
-                .post("https://api.anthropic.com/v1/messages")
+                .get("https://api.anthropic.com/v1/models")
                 .header("x-api-key", &key)
                 .header("anthropic-version", "2023-06-01")
-                .header("content-type", "application/json")
-                .body(r#"{"model":"claude-3-haiku-20240307","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}"#)
                 .send()
                 .await
         }
@@ -297,6 +298,152 @@ pub fn show_main_window(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------
+// Analytics / Usage stats
+// ---------------------------------------------------------------------------
+
+use std::sync::OnceLock;
+
+static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+
+fn get_http_client() -> &'static reqwest::Client {
+    HTTP_CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .expect("Failed to build HTTP client")
+    })
+}
+
+/// Per-model stats within a provider entry from CLIProxy usage APIs field
+#[derive(serde::Deserialize, serde::Serialize, Default, Clone)]
+pub struct ModelStats {
+    #[serde(default)]
+    pub requests: u64,
+    #[serde(default)]
+    pub tokens: u64,
+    #[serde(default)]
+    pub success: u64,
+    #[serde(default)]
+    pub failure: u64,
+}
+
+/// Typed structs matching the CLIProxy /v0/management/usage response shape.
+/// Response is wrapped: { "failed_requests": N, "usage": { ... } }
+/// Hour/day maps use string keys: { "0": 5, "1": 12, ... } or { "2026-05-01": 42 }
+/// apis field: { provider: { model: { requests, tokens, ... } } }
+#[derive(serde::Deserialize, serde::Serialize, Default)]
+pub struct UsageInner {
+    #[serde(default)]
+    pub total_requests: u64,
+    #[serde(default)]
+    pub success_count: u64,
+    #[serde(default)]
+    pub failure_count: u64,
+    #[serde(default)]
+    pub total_tokens: u64,
+    /// Per-provider → per-model breakdown: { provider: { model: ModelStats } }
+    #[serde(default)]
+    pub apis: std::collections::HashMap<String, std::collections::HashMap<String, ModelStats>>,
+    /// Map of hour string ("0"–"23") → request count
+    #[serde(default)]
+    pub requests_by_hour: std::collections::HashMap<String, u64>,
+    /// Map of date string ("YYYY-MM-DD") → request count
+    #[serde(default)]
+    pub requests_by_day: std::collections::HashMap<String, u64>,
+    /// Map of hour string ("0"–"23") → token count
+    #[serde(default)]
+    pub tokens_by_hour: std::collections::HashMap<String, u64>,
+    /// Map of date string ("YYYY-MM-DD") → token count
+    #[serde(default)]
+    pub tokens_by_day: std::collections::HashMap<String, u64>,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Default)]
+pub struct UsageResponse {
+    #[serde(default)]
+    pub failed_requests: u64,
+    #[serde(default)]
+    pub usage: UsageInner,
+}
+
+/// Fetch usage stats from the CLIProxy management API.
+/// Deserializes server response into a typed struct (no double-serialization).
+#[tauri::command]
+pub async fn fetch_usage_stats(port: u16, management_key: String) -> Result<UsageResponse, String> {
+    // Use 127.0.0.1 explicitly — on macOS, `localhost` may resolve to ::1 (IPv6)
+    // while the proxy binds to 127.0.0.1 only, causing connection refusal.
+    let url = format!("http://127.0.0.1:{}/v0/management/usage", port);
+    let client = get_http_client();
+
+    let resp = client
+        .get(&url)
+        .header("X-Management-Key", &management_key)
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Management API returned status {}", resp.status()));
+    }
+
+    resp.json::<UsageResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse usage stats: {}", e))
+}
+
+// ---------------------------------------------------------------------------
+// Usage cache persistence (offline analytics)
+// ---------------------------------------------------------------------------
+
+/// Returns the path to the Aether usage cache file: ~/.config/aether/usage-cache.json
+///
+/// Uses `dirs::home_dir()` + `.config/aether/` (not `dirs::config_dir()` which returns
+/// `~/Library/Application Support` on macOS) for consistency with the rest of the app
+/// which uses `~/.config/aether/` as the canonical config location.
+fn usage_cache_path() -> Result<std::path::PathBuf, String> {
+    dirs::home_dir()
+        .map(|h| h.join(".config").join("aether").join("usage-cache.json"))
+        .ok_or_else(|| "Could not determine home directory".to_string())
+}
+
+/// Read the last-persisted UsageResponse from disk.
+/// Returns `Ok(None)` if the file doesn't exist yet (first run).
+/// Automatically removes a corrupt cache file instead of propagating a hard error.
+#[tauri::command]
+pub fn read_usage_cache() -> Result<Option<UsageResponse>, String> {
+    let path = usage_cache_path()?;
+    if !path.exists() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read usage cache: {}", e))?;
+    match serde_json::from_str::<UsageResponse>(&content) {
+        Ok(data) => Ok(Some(data)),
+        Err(e) => {
+            // Corrupt cache (e.g. partial write, schema change) — remove and continue
+            log::warn!("Corrupt usage cache at {:?}, removing: {}", path, e);
+            let _ = std::fs::remove_file(&path);
+            Ok(None)
+        }
+    }
+}
+
+/// Persist a UsageResponse to disk so analytics work offline.
+#[tauri::command]
+pub fn write_usage_cache(data: UsageResponse) -> Result<(), String> {
+    let path = usage_cache_path()?;
+    // Ensure the parent directory exists
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create config dir: {}", e))?;
+    }
+    let content = serde_json::to_string(&data)
+        .map_err(|e| format!("Failed to serialize usage cache: {}", e))?;
+    std::fs::write(&path, content)
+        .map_err(|e| format!("Failed to write usage cache: {}", e))
+}
+
+// ---------------------------------------------------------------------------
 // Event stream commands
 // ---------------------------------------------------------------------------
 
@@ -306,8 +453,8 @@ pub fn start_event_stream(
     port: Option<u16>,
 ) -> Result<(), String> {
     let port = port.unwrap_or(8317);
-    // Start the WebSocket event stream. The abort sender is not stored for now;
-    // the stream will naturally close when the sidecar stops or the app exits.
-    let _abort = events::start_event_stream(app, port);
+    // Start the WebSocket event stream. Abort sender is stored internally in
+    // events::STREAM_ABORT — calling again cancels the previous stream.
+    events::start_event_stream(app, port);
     Ok(())
 }

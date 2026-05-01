@@ -1,7 +1,14 @@
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
+use std::sync::Mutex;
 use tauri::Emitter;
 use tokio::sync::oneshot;
+
+/// Guards the active event-stream abort sender so only one stream runs at a time.
+/// `std::sync::Mutex` is used intentionally — the lock is held only for a pointer
+/// swap (no `.await` while holding it), so there is no async deadlock risk.
+/// We `.expect()` on lock/unlock so a panic-poisoned mutex surfaces loudly.
+static STREAM_ABORT: Mutex<Option<oneshot::Sender<()>>> = Mutex::new(None);
 
 /// A proxied API request event from the sidecar's WebSocket stream.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,18 +47,27 @@ pub struct EventStreamStatus {
 }
 
 /// Connect to the sidecar's WebSocket event stream and relay events to the frontend.
-/// Returns a oneshot sender that can be used to abort the connection.
-pub fn start_event_stream(
-    app: tauri::AppHandle,
-    port: u16,
-) -> oneshot::Sender<()> {
+/// Cancels any previously running stream before starting a new one.
+/// The abort sender is stored in `STREAM_ABORT` *before* the task is spawned
+/// to prevent a race window where a second call could fail to cancel the first.
+pub fn start_event_stream(app: tauri::AppHandle, port: u16) {
     let (abort_tx, abort_rx) = oneshot::channel::<()>();
 
+    // Store abort_tx BEFORE spawning so a concurrent call that immediately
+    // follows will find and cancel this stream — not an old stale sender.
+    {
+        let mut guard = STREAM_ABORT.lock().expect("STREAM_ABORT mutex poisoned");
+        if let Some(prev) = guard.take() {
+            let _ = prev.send(()); // signal previous stream to stop
+        }
+        *guard = Some(abort_tx);
+    }
+
     tauri::async_runtime::spawn(async move {
-        let url = format!("ws://localhost:{}/events", port);
+        // Use 127.0.0.1 explicitly — avoids macOS IPv6/IPv4 resolution ambiguity
+        let url = format!("ws://127.0.0.1:{}/events", port);
         log::info!("Connecting to sidecar event stream: {}", url);
 
-        // Emit initial connecting status
         app.emit(
             "event-stream-status",
             EventStreamStatus {
@@ -61,7 +77,7 @@ pub fn start_event_stream(
         )
         .ok();
 
-        // Try to connect with retry logic
+        // Try to connect — bail early if cancelled before connection is established
         let ws_result = tokio::select! {
             result = connect_ws(&url) => result,
             _ = abort_rx => {
@@ -83,15 +99,29 @@ pub fn start_event_stream(
 
                 let (_, mut read) = ws_stream.split();
 
-                // Create a new abort channel for the read loop
-                let (loop_abort_tx, mut loop_abort_rx) = oneshot::channel::<()>();
-                // We can't reuse abort_rx since it was already consumed, but the
-                // abort_tx the caller holds was already consumed in the select above.
-                // Instead, just read until the stream ends or we get an error.
-                drop(loop_abort_tx); // unused, just read until done
+                // Get a fresh abort receiver for the message loop.
+                // We create a new pair here; the stored abort_tx was already
+                // consumed above, so we register a second abort channel that
+                // gets cancelled when `start_event_stream` is called again.
+                let (loop_tx, mut loop_rx) = oneshot::channel::<()>();
+                {
+                    let mut guard =
+                        STREAM_ABORT.lock().expect("STREAM_ABORT mutex poisoned");
+                    // Only register if no other call has already replaced us
+                    if guard.is_none() {
+                        *guard = Some(loop_tx);
+                    }
+                    // If something already replaced us, drop loop_tx — the new
+                    // caller's abort_tx is now in the slot; we should exit.
+                }
 
                 loop {
                     tokio::select! {
+                        biased; // check abort first to exit promptly
+                        _ = &mut loop_rx => {
+                            log::info!("Event stream read loop aborted");
+                            break;
+                        }
                         msg = read.next() => {
                             match msg {
                                 Some(Ok(tokio_tungstenite::tungstenite::Message::Text(text))) => {
@@ -119,10 +149,6 @@ pub fn start_event_stream(
                                 }
                             }
                         }
-                        _ = &mut loop_abort_rx => {
-                            log::info!("Event stream read loop aborted");
-                            break;
-                        }
                     }
                 }
 
@@ -149,8 +175,6 @@ pub fn start_event_stream(
             }
         }
     });
-
-    abort_tx
 }
 
 async fn connect_ws(
