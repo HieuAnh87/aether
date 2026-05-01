@@ -43,7 +43,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download sidecar
-        run: ./scripts/download-sidecar.sh
+        run: ./scripts/download-sidecar.sh --target ${{ matrix.target }}
 
       - name: Build Tauri app
         run: pnpm tauri build --target ${{ matrix.target }}
