@@ -2,6 +2,7 @@ mod commands;
 mod config;
 mod keychain;
 mod proxy;
+mod secrets;
 mod watcher;
 
 use proxy::ProxyState;
@@ -60,7 +61,6 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_keyring::init())
         .plugin(tauri_plugin_process::init())
         .manage(std::sync::Mutex::new(ProxyState::default()))
         .invoke_handler(tauri::generate_handler![
@@ -94,6 +94,7 @@ pub fn run() {
             commands::write_usage_cache,
             commands::agents::detect_cli_agents,
             commands::agents::configure_cli_agent,
+            commands::agents::preview_opencode_config,
             commands::agent_providers::get_agent_providers,
             commands::agent_providers::get_well_known_providers,
             commands::agent_providers::add_agent_provider,
@@ -103,13 +104,16 @@ pub fn run() {
             commands::agent_providers::validate_agent_provider_key,
         ])
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            use tauri_plugin_log::{Builder as LogBuilder, Target, TargetKind};
+            app.handle().plugin(
+                LogBuilder::default()
+                    .level(log::LevelFilter::Info)
+                    .targets([
+                        Target::new(TargetKind::Stdout),
+                        Target::new(TargetKind::Webview),
+                    ])
+                    .build(),
+            )?;
 
             // Register updater plugin (desktop only)
             #[cfg(desktop)]

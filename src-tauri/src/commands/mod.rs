@@ -155,13 +155,10 @@ pub struct ProviderAccountInfo {
 pub fn get_provider_accounts(app: tauri::AppHandle) -> Result<Vec<ProviderAccountInfo>, String> {
     let mut accounts = Vec::new();
     for &provider in SUPPORTED_PROVIDERS {
-        let has_key = keychain::has_api_key(&app, provider);
-        let masked_key = if has_key {
-            keychain::get_api_key(&app, provider)?
-                .map(|k| keychain::mask_key(&k))
-        } else {
-            None
-        };
+        // Single keychain read per provider instead of has_api_key + get_api_key (2 reads)
+        let key = keychain::get_api_key(&app, provider)?;
+        let has_key = key.is_some();
+        let masked_key = key.map(|k| keychain::mask_key(&k));
         accounts.push(ProviderAccountInfo {
             provider: provider.to_string(),
             has_key,

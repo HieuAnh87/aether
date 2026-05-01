@@ -1,57 +1,29 @@
-const SERVICE: &str = "aether";
+//! API key storage — thin wrapper over `crate::secrets` (AES-256-GCM encrypted file).
+//!
+//! Replaces the old macOS Keychain backend to eliminate password prompts.
+//! All callers use the same interface; only the storage backend changed.
 
-/// Get the keychain account name for a provider
-fn account_name(provider: &str) -> String {
+/// Key name for a provider's API key in the secrets store.
+fn secret_key(provider: &str) -> String {
     format!("{}.api_key", provider)
 }
 
-/// Store an API key in macOS Keychain
+/// Store an API key.
 pub fn store_api_key(app: &tauri::AppHandle, provider: &str, key: &str) -> Result<(), String> {
-    use tauri_plugin_keyring::KeyringExt;
-    app.keyring()
-        .set_password(SERVICE, &account_name(provider), key)
-        .map_err(|e| format!("Failed to store key: {}", e))
+    crate::secrets::store(app, &secret_key(provider), key)
 }
 
-/// Retrieve an API key from macOS Keychain
+/// Retrieve an API key. Returns `None` if not set.
 pub fn get_api_key(app: &tauri::AppHandle, provider: &str) -> Result<Option<String>, String> {
-    use tauri_plugin_keyring::KeyringExt;
-    match app.keyring().get_password(SERVICE, &account_name(provider)) {
-        Ok(key) => Ok(key),
-        Err(e) => {
-            let msg = e.to_string();
-            // "No matching items found" or similar = key doesn't exist
-            if msg.contains("not found")
-                || msg.contains("No matching")
-                || msg.contains("NoEntry")
-                || msg.contains("No entry")
-            {
-                Ok(None)
-            } else {
-                Err(format!("Failed to get key: {}", msg))
-            }
-        }
-    }
+    crate::secrets::get(app, &secret_key(provider))
 }
 
-/// Delete an API key from macOS Keychain
+/// Delete an API key.
 pub fn delete_api_key(app: &tauri::AppHandle, provider: &str) -> Result<(), String> {
-    use tauri_plugin_keyring::KeyringExt;
-    app.keyring()
-        .delete_password(SERVICE, &account_name(provider))
-        .map_err(|e| format!("Failed to delete key: {}", e))
+    crate::secrets::delete(app, &secret_key(provider))
 }
 
-/// Check if an API key exists in Keychain (without reading it)
-pub fn has_api_key(app: &tauri::AppHandle, provider: &str) -> bool {
-    get_api_key(app, provider).ok().flatten().is_some()
-}
-
-/// Mask an API key showing only last 4 chars
+/// Mask an API key showing only last 4 chars.
 pub fn mask_key(key: &str) -> String {
-    if key.len() <= 4 {
-        return "••••".to_string();
-    }
-    let last4 = &key[key.len() - 4..];
-    format!("••••••••{}", last4)
+    crate::secrets::mask_value(key)
 }

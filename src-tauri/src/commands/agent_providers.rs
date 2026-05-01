@@ -7,6 +7,7 @@
 //! API keys:    macOS Keychain, key = "aether-provider.{id}"
 
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -82,7 +83,7 @@ fn config_path() -> Result<std::path::PathBuf> {
     Ok(config_dir.join("aether").join("agent-providers.json"))
 }
 
-fn read_providers_file() -> Result<AgentProvidersFile> {
+pub fn read_providers_file() -> Result<AgentProvidersFile> {
     let path = config_path()?;
     if !path.exists() {
         return Ok(AgentProvidersFile::default());
@@ -105,33 +106,22 @@ fn write_providers_file(file: &AgentProvidersFile) -> Result<()> {
 // Keychain helpers
 // ---------------------------------------------------------------------------
 
-const KEY_PREFIX: &str = "provider.";
+pub const KEY_PREFIX: &str = "provider.";
 
 fn keychain_key(id: &str) -> String {
     format!("{}{}", KEY_PREFIX, id)
 }
 
-fn keychain_has_key(app: &tauri::AppHandle, id: &str) -> bool {
-    crate::keychain::has_api_key(app, &keychain_key(id))
-}
-
-fn keychain_get_masked(app: &tauri::AppHandle, id: &str) -> Option<String> {
-    crate::keychain::get_api_key(app, &keychain_key(id))
-        .ok()
-        .flatten()
-        .map(|k| crate::keychain::mask_key(&k))
-}
-
 fn keychain_get_raw(app: &tauri::AppHandle, id: &str) -> Result<Option<String>, String> {
-    crate::keychain::get_api_key(app, &keychain_key(id))
+    crate::secrets::get(app, &keychain_key(id))
 }
 
 fn keychain_store(app: &tauri::AppHandle, id: &str, key: &str) -> Result<(), String> {
-    crate::keychain::store_api_key(app, &keychain_key(id), key)
+    crate::secrets::store(app, &keychain_key(id), key)
 }
 
 fn keychain_delete(app: &tauri::AppHandle, id: &str) -> Result<(), String> {
-    crate::keychain::delete_api_key(app, &keychain_key(id))
+    crate::secrets::delete(app, &keychain_key(id))
 }
 
 // ---------------------------------------------------------------------------
@@ -145,12 +135,10 @@ pub fn get_agent_providers(app: tauri::AppHandle) -> Result<Vec<AgentProviderInf
         .providers
         .into_iter()
         .map(|(id, entry)| {
-            let has_key = keychain_has_key(&app, &id);
-            let masked_key = if has_key {
-                keychain_get_masked(&app, &id)
-            } else {
-                None
-            };
+            // Single decrypt per provider — get value and derive has_key from it
+            let raw_key = crate::secrets::get(&app, &keychain_key(&id)).ok().flatten();
+            let has_key = raw_key.is_some();
+            let masked_key = raw_key.map(|k| crate::secrets::mask_value(&k));
             AgentProviderInfo {
                 id,
                 name: entry.name,
@@ -218,6 +206,7 @@ pub fn add_agent_provider(
             keychain_store(&app, &id, &key)?;
         }
     }
+    trigger_cliproxy_sync(&app);
     Ok(())
 }
 
@@ -266,6 +255,7 @@ pub fn update_agent_provider(
             keychain_store(&app, &id, &key)?;
         }
     }
+    trigger_cliproxy_sync(&app);
     Ok(())
 }
 
@@ -278,6 +268,7 @@ pub fn delete_agent_provider(app: tauri::AppHandle, id: String) -> Result<(), St
     write_providers_file(&file).map_err(|e| e.to_string())?;
     // Best-effort keychain cleanup
     let _ = keychain_delete(&app, &id);
+    trigger_cliproxy_sync(&app);
     Ok(())
 }
 
@@ -388,6 +379,38 @@ fn validate_compatibility(compatibility: &str) -> Result<(), String> {
             "Unknown compatibility '{}'. Must be 'openai' or 'anthropic'.",
             other
         )),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// CLIProxy sync helper (debounced)
+// ---------------------------------------------------------------------------
+
+/// Active debounce handle — aborted and replaced on each rapid mutation.
+static SYNC_HANDLE: Mutex<Option<tauri::async_runtime::JoinHandle<()>>> = Mutex::new(None);
+
+/// Spawn a debounced background sync to CLIProxy (fire-and-forget).
+///
+/// Rapid successive CRUD operations collapse into a single sync: each call
+/// cancels the previous pending sync and schedules a new one 200 ms later.
+/// This prevents replace-all race conditions when the user edits multiple
+/// providers in quick succession.
+fn trigger_cliproxy_sync(app: &tauri::AppHandle) {
+    // Cancel any pending sync.
+    if let Ok(mut guard) = SYNC_HANDLE.lock() {
+        if let Some(handle) = guard.take() {
+            handle.abort();
+        }
+    }
+
+    let app_clone = app.clone();
+    let handle = tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        crate::proxy::management::sync_providers_to_cliproxy(&app_clone).await;
+    });
+
+    if let Ok(mut guard) = SYNC_HANDLE.lock() {
+        *guard = Some(handle);
     }
 }
 

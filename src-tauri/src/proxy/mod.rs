@@ -1,4 +1,5 @@
 pub mod events;
+pub mod management;
 
 use std::sync::Mutex;
 use std::sync::Arc;
@@ -261,16 +262,10 @@ pub async fn start_proxy(
                         break;
                     }
                     Some(CommandEvent::Stdout(line)) => {
-                        log::info!(
-                            "cliproxyapi stdout: {}",
-                            String::from_utf8_lossy(&line)
-                        );
+                        log::info!("{}", String::from_utf8_lossy(&line).trim());
                     }
                     Some(CommandEvent::Stderr(line)) => {
-                        log::info!(
-                            "cliproxyapi stderr: {}",
-                            String::from_utf8_lossy(&line)
-                        );
+                        log::warn!("{}", String::from_utf8_lossy(&line).trim());
                     }
                     None => {
                         // Channel closed — process finished.
@@ -343,6 +338,8 @@ async fn health_check_loop(
                     ) {
                         log::warn!("Failed to emit running event: {}", e);
                     }
+                    // Sync Agent Providers into CLIProxy now that the proxy is up.
+                    management::sync_providers_to_cliproxy(&app_handle).await;
                 } else if !healthy && first_success {
                     // Proxy was running but is now unreachable.
                     if stopping_flag.load(Ordering::SeqCst) {

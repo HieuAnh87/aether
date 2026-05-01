@@ -282,6 +282,49 @@ const ProviderModal: Component<ProviderModalProps> = (props) => {
 };
 
 // ---------------------------------------------------------------------------
+// Copy button (inline utility component)
+// ---------------------------------------------------------------------------
+
+const CopyButton = (props: { text: string }) => {
+  const [copied, setCopied] = createSignal(false);
+
+  const handleCopy = async () => {
+    if (!props.text) return;
+    try {
+      await navigator.clipboard.writeText(props.text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // ignore clipboard errors (e.g. no permissions)
+    }
+  };
+
+  return (
+    <button
+      class="shrink-0 rounded p-0.5 text-text-muted transition-colors hover:text-text-secondary"
+      onClick={handleCopy}
+      title={copied() ? "Copied!" : "Copy"}
+    >
+      <Show
+        when={copied()}
+        fallback={
+          // Copy icon
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />
+          </svg>
+        }
+      >
+        {/* Check icon */}
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <polyline points="20 6 9 17 4 12" stroke="currentColor" />
+        </svg>
+      </Show>
+    </button>
+  );
+};
+
+// ---------------------------------------------------------------------------
 // Provider card
 // ---------------------------------------------------------------------------
 
@@ -294,8 +337,12 @@ interface ProviderCardProps {
 }
 
 const ProviderItemCard: Component<ProviderCardProps> = (props) => {
+  const [expanded, setExpanded] = createSignal(false);
+  const [showAllModels, setShowAllModels] = createSignal(false);
+
   return (
-    <GlassCard>
+    <GlassCard class="flex h-full flex-col">
+      {/* Top section: name + badges + actions */}
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
@@ -307,14 +354,16 @@ const ProviderItemCard: Component<ProviderCardProps> = (props) => {
           <p class="mt-0.5 truncate font-caption text-text-muted">{props.provider.baseUrl}</p>
         </div>
         <div class="flex shrink-0 gap-1">
+          {/* Edit button */}
           <button
-            class="rounded-md px-2 py-1 font-caption text-text-secondary transition-colors hover:bg-glass-bg hover:text-text"
+            class="rounded-md px-2 py-1 font-caption text-text-secondary transition-colors hover:bg-glass-bg hover:text-primary"
             onClick={() => props.onEdit(props.provider.id)}
           >
             Edit
           </button>
+          {/* Delete button */}
           <button
-            class="rounded-md px-2 py-1 font-caption text-status-error transition-colors hover:bg-glass-bg"
+            class="rounded-md px-2 py-1 font-caption text-status-error transition-colors hover:bg-red-500/15 hover:text-red-400"
             onClick={() => props.onDelete(props.provider.id)}
           >
             Delete
@@ -324,10 +373,7 @@ const ProviderItemCard: Component<ProviderCardProps> = (props) => {
 
       {/* Key status */}
       <div class="mt-3 flex items-center gap-2">
-        <Show
-          when={props.provider.hasKey}
-          fallback={<Badge variant="warning">No API key</Badge>}
-        >
+        <Show when={props.provider.hasKey} fallback={<Badge variant="warning">No API key</Badge>}>
           <Badge variant="active">Key stored</Badge>
           <Show when={props.provider.maskedKey}>
             <span class="font-mono text-xs text-text-muted">{props.provider.maskedKey}</span>
@@ -335,7 +381,7 @@ const ProviderItemCard: Component<ProviderCardProps> = (props) => {
         </Show>
       </div>
 
-      {/* Models */}
+      {/* Models row */}
       <div class="mt-3 flex items-center gap-2">
         <Show when={props.provider.modelsEndpoint}>
           <button
@@ -343,12 +389,15 @@ const ProviderItemCard: Component<ProviderCardProps> = (props) => {
             onClick={() => props.onFetchModels(props.provider.id)}
             disabled={props.fetchingModels || !props.provider.hasKey}
           >
-            <Show when={props.fetchingModels} fallback={
-              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M4 4v5h5M16 16v-5h-5" stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M4 9a7 7 0 0114 0M16 11a7 7 0 01-14 0" stroke-linecap="round" />
-              </svg>
-            }>
+            <Show
+              when={props.fetchingModels}
+              fallback={
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M4 4v5h5M16 16v-5h-5" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M4 9a7 7 0 0114 0M16 11a7 7 0 01-14 0" stroke-linecap="round" />
+                </svg>
+              }
+            >
               <svg class="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke-linecap="round" />
               </svg>
@@ -363,23 +412,97 @@ const ProviderItemCard: Component<ProviderCardProps> = (props) => {
         </Show>
       </div>
 
-      {/* Model chips (collapsed after 5) */}
+      {/* Model chips — expandable */}
       <Show when={props.provider.models.length > 0}>
         <div class="mt-2 flex flex-wrap gap-1">
-          <For each={props.provider.models.slice(0, 5)}>
+          <For each={showAllModels() ? props.provider.models : props.provider.models.slice(0, 5)}>
             {(model) => (
               <span class="rounded bg-glass-bg px-1.5 py-0.5 font-mono text-xs text-text-muted">
                 {model}
               </span>
             )}
           </For>
-          <Show when={props.provider.models.length > 5}>
-            <span class="rounded bg-glass-bg px-1.5 py-0.5 font-mono text-xs text-text-muted">
+          <Show when={props.provider.models.length > 5 && !showAllModels()}>
+            <button
+              class="rounded bg-glass-bg px-1.5 py-0.5 font-mono text-xs text-primary transition-colors hover:text-primary-hover"
+              onClick={() => setShowAllModels(true)}
+            >
               +{props.provider.models.length - 5} more
-            </span>
+            </button>
+          </Show>
+          <Show when={showAllModels()}>
+            <button
+              class="rounded bg-glass-bg px-1.5 py-0.5 font-mono text-xs text-text-muted transition-colors hover:text-text-secondary"
+              onClick={() => setShowAllModels(false)}
+            >
+              show less
+            </button>
           </Show>
         </div>
       </Show>
+
+      {/* Expanded detail section */}
+      <Show when={expanded()}>
+        <hr class="mt-3 border-border/40" />
+        <div class="mt-3 space-y-2.5">
+          {/* Provider ID row */}
+          <div class="flex items-center gap-2">
+            <span class="w-16 shrink-0 font-caption text-xs text-text-muted">ID</span>
+            <span class="rounded bg-glass-bg px-1.5 py-0.5 font-mono text-xs text-text-secondary">
+              {props.provider.id}
+            </span>
+          </div>
+
+          {/* Base URL row with copy */}
+          <div class="flex items-start gap-2">
+            <span class="w-16 shrink-0 pt-0.5 font-caption text-xs text-text-muted">URL</span>
+            <div class="flex min-w-0 flex-1 items-start gap-1.5">
+              <span class="break-all font-mono text-xs leading-relaxed text-text-secondary">
+                {props.provider.baseUrl}
+              </span>
+              <CopyButton text={props.provider.baseUrl} />
+            </div>
+          </div>
+
+          {/* API Key row with copy */}
+          <Show when={props.provider.hasKey}>
+            <div class="flex items-center gap-2">
+              <span class="w-16 shrink-0 font-caption text-xs text-text-muted">Key</span>
+              <div class="flex items-center gap-1.5">
+                <span class="font-mono text-xs text-text-secondary">
+                  {props.provider.maskedKey ?? "••••••••••••••••"}
+                </span>
+                <CopyButton text={props.provider.maskedKey ?? ""} />
+              </div>
+            </div>
+          </Show>
+          <Show when={!props.provider.hasKey}>
+            <div class="flex items-center gap-2">
+              <span class="w-16 shrink-0 font-caption text-xs text-text-muted">Key</span>
+              <span class="font-caption text-xs text-status-warning">Not configured</span>
+            </div>
+          </Show>
+        </div>
+      </Show>
+
+      {/* Expand / collapse toggle — divider-flanked tab style */}
+      <button
+        class="mt-auto pt-3 flex w-full items-center gap-2 text-text-muted transition-colors hover:text-text-secondary"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <span class="h-px flex-1 bg-border/40" />
+        <span class="flex items-center gap-1 font-caption text-xs">
+          <svg width="10" height="10" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path
+              d={expanded() ? "M5 12l7-7 7 7" : "M5 8l7 7 7-7"}
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          {expanded() ? "Less" : "Details"}
+        </span>
+        <span class="h-px flex-1 bg-border/40" />
+      </button>
     </GlassCard>
   );
 };
@@ -393,6 +516,7 @@ const AgentProviders: Component = () => {
   const [modalOpen, setModalOpen] = createSignal(false);
   const [editTarget, setEditTarget] = createSignal<AgentProviderInfo | undefined>(undefined);
   const [fetchingId, setFetchingId] = createSignal<string | null>(null);
+  const [search, setSearch] = createSignal("");
 
   onMount(async () => {
     await Promise.all([
@@ -400,6 +524,17 @@ const AgentProviders: Component = () => {
       agentProviderStore.loadWellKnown(),
     ]);
   });
+
+  const filteredProviders = () => {
+    const q = search().toLowerCase().trim();
+    if (!q) return agentProviderStore.providers();
+    return agentProviderStore.providers().filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        p.baseUrl.toLowerCase().includes(q),
+    );
+  };
 
   const handleAdd = () => {
     setEditTarget(undefined);
@@ -449,7 +584,7 @@ const AgentProviders: Component = () => {
             API keys are stored securely in macOS Keychain.
           </p>
         </div>
-        <Button variant="primary" onClick={handleAdd}>
+        <Button variant="primary" onClick={handleAdd} class="whitespace-nowrap">
           Add Provider
         </Button>
       </div>
@@ -476,19 +611,74 @@ const AgentProviders: Component = () => {
             </div>
           }
         >
-          <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-            <For each={agentProviderStore.providers()}>
-              {(provider) => (
-                <ProviderItemCard
-                  provider={provider}
-                  onEdit={handleEdit}
-                  onDelete={handleDelete}
-                  onFetchModels={handleFetchModels}
-                  fetchingModels={fetchingId() === provider.id}
-                />
-              )}
-            </For>
+          {/* Search / filter bar */}
+          <div class="mb-4">
+            <div class="relative">
+              <svg
+                class="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.35-4.35" stroke-linecap="round" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Filter providers..."
+                value={search()}
+                onInput={(e) => setSearch(e.currentTarget.value)}
+                class="w-full rounded-lg border border-border bg-glass-bg py-2 pl-9 pr-3 font-caption text-sm text-text placeholder:text-text-muted transition-colors focus:border-primary focus:outline-none"
+              />
+              <Show when={search()}>
+                <button
+                  class="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted transition-colors hover:text-text"
+                  onClick={() => setSearch("")}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M18 6 6 18M6 6l12 12" stroke-linecap="round" />
+                  </svg>
+                </button>
+              </Show>
+            </div>
           </div>
+
+          {/* No-results message */}
+          <Show when={filteredProviders().length === 0 && search().length > 0}>
+            <div class="py-12 text-center">
+              <p class="font-body text-text-muted">
+                No providers match "
+                <span class="text-text-secondary">{search()}</span>
+                "
+              </p>
+              <button
+                class="mt-2 font-caption text-primary hover:underline"
+                onClick={() => setSearch("")}
+              >
+                Clear filter
+              </button>
+            </div>
+          </Show>
+
+          {/* Provider grid */}
+          <Show when={filteredProviders().length > 0}>
+            <div class="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
+              <For each={filteredProviders()}>
+                {(provider) => (
+                  <ProviderItemCard
+                    provider={provider}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onFetchModels={handleFetchModels}
+                    fetchingModels={fetchingId() === provider.id}
+                  />
+                )}
+              </For>
+            </div>
+          </Show>
         </Show>
       </Show>
 

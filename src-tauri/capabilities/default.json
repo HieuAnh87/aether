@@ -18,7 +18,6 @@
     "core:tray:allow-set-icon",
     "core:tray:allow-set-tooltip",
     "dialog:default",
-    "keyring:default",
     "updater:default",
     "process:default"
   ]
