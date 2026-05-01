@@ -53,7 +53,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDFBOUZGRDI1MUQ2NjZBNUUKUldSZWFtWWRKZjJmR3FGaC9QVFB5VEw3MUZKUER4Y01MSlRTMHhUTVdadlZ1RUo3NHBLYkNKR0sK",
       "endpoints": [
         "https://github.com/hieuda/aether/releases/latest/download/latest.json"
       ]
