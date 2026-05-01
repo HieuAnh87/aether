@@ -313,9 +313,12 @@ The knowledge graph identified **36 clusters** grouped into these functional dom
 **Key flows:**
 - `detect_cli_agents` → checks `which_exists()` for known binaries → returns status per agent
 - `configure_cli_agent` → writes proxy config to appropriate dotfiles per agent
-  - Claude Code → `~/.claude/configuration.json`
-  - Cursor → `~/.cursor/config.json`
+  - Claude Code → `~/.claude/settings.json`
+  - Codex CLI → `~/.codex/config.toml` + `auth.json`
+  - Gemini CLI → env var `CODE_ASSIST_ENDPOINT`
+  - Amp CLI → `~/.config/amp/settings.json`
   - OpenCode → `~/.config/opencode/opencode.json`
+  - Kiro → env var `KIRO_ENDPOINT`
 
 **Files:** `commands/agents.rs`, `config/settings.rs`, `Agents.tsx`
 
