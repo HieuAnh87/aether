@@ -534,13 +534,28 @@ async function fetchStats(): Promise<void> {
     const currentLifetime = lifetimeAccumulator();
     const currentLast = lastSnapshot();
     
+    console.log("[analytics] fetchStats delta computation:", {
+      live_total: response.usage.total_requests,
+      live_success: response.usage.success_count,
+      live_failure: response.usage.failure_count,
+      currentLifetime_total: currentLifetime?.total_requests ?? null,
+      currentLast_total: currentLast?.usage.total_requests ?? null,
+    });
+    
     let newLifetime: LifetimeAccumulator;
     if (!currentLifetime) {
       // First fetch ever — initialize lifetime from live snapshot
       newLifetime = initLifetimeFromSnapshot(response);
+      console.log("[analytics] initialized lifetime from snapshot:", {
+        lifetime_total: newLifetime.total_requests,
+      });
     } else {
       // Accumulate delta into lifetime
       newLifetime = accumulateDelta(currentLifetime, response, currentLast);
+      console.log("[analytics] accumulated delta:", {
+        lifetime_total: newLifetime.total_requests,
+        delta: newLifetime.total_requests - currentLifetime.total_requests,
+      });
     }
 
     // Update signals
