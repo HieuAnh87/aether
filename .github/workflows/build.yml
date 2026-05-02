@@ -189,10 +189,16 @@ jobs:
           files=(dist/**/*)
           upload_files=()
           for f in "${files[@]}"; do
-            [ -f "$f" ] && upload_files+=("$f")
+            [ -f "$f" ] || continue
+
+            case "$f" in
+              *.dmg|*.deb|*.rpm|*.AppImage|*.msi|*.exe|*.zip|*.sig|*.tar.gz)
+                upload_files+=("$f")
+                ;;
+            esac
           done
           if [ ${#upload_files[@]} -eq 0 ]; then
-            echo "No files found in dist/ to upload"
+            echo "No release assets found in dist/ to upload"
             exit 1
           fi
           gh release upload "${GITHUB_REF_NAME}" "${upload_files[@]}" --repo "${GITHUB_REPOSITORY}" --clobber
