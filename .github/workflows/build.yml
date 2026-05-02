@@ -187,8 +187,12 @@ jobs:
         run: |
           shopt -s globstar nullglob
           files=(dist/**/*)
-          if [ ${#files[@]} -eq 0 ]; then
+          upload_files=()
+          for f in "${files[@]}"; do
+            [ -f "$f" ] && upload_files+=("$f")
+          done
+          if [ ${#upload_files[@]} -eq 0 ]; then
             echo "No files found in dist/ to upload"
             exit 1
           fi
-          gh release upload "${GITHUB_REF_NAME}" "${files[@]}" --repo "${GITHUB_REPOSITORY}" --clobber
+          gh release upload "${GITHUB_REF_NAME}" "${upload_files[@]}" --repo "${GITHUB_REPOSITORY}" --clobber
