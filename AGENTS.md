@@ -135,6 +135,9 @@ This project is onboarded with [Serena](https://github.com/serena-ai/serena) for
 | `style_and_conventions` | SolidJS patterns, TS strict flags, Rust conventions, Tailwind |
 | `task_completion` | Checklist for verifying changes (typecheck, quirks) |
 | `architecture/dependency_graph` | Page→store, component→store, backend module deps, execution flows |
+| `analytics/implementation` | Analytics store implementation details and patterns |
+| `bugfix/analyticsStore_duplicate_memos` | Fix for duplicate memo computations in analytics store |
+| `global/changelog-2026-03-31` | Global changelog entry from March 2026 |
 
 ### When to Use Serena
 
