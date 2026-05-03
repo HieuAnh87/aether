@@ -70,6 +70,22 @@ const filteredRequests = createMemo(() => {
   return result;
 });
 
+const providers = createMemo(() => {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+
+  for (const req of requests()) {
+    const raw = req.provider?.trim();
+    if (!raw) continue;
+    const key = raw.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    ordered.push(raw);
+  }
+
+  return ordered;
+});
+
 const selectedRequest = createMemo(() => {
   const id = selectedRequestId();
   if (!id) return null;
@@ -158,6 +174,7 @@ export const requestStore = {
   streamError,
   // Computed
   filteredRequests,
+  providers,
   selectedRequest,
   // Actions
   setFilterProvider,

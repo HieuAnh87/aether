@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { For, Show, Suspense } from "solid-js";
+import { For, Show, Suspense, onMount } from "solid-js";
 import { useNavigate } from "@solidjs/router";
 import GlassCard from "../components/GlassCard";
 import Badge from "../components/Badge";
@@ -8,9 +8,14 @@ import { presetStore, splitModelId } from "../stores/presetStore";
 import { proxyStore } from "../stores/proxyStore";
 import { requestStore } from "../stores/requestStore";
 import { accountStore } from "../stores/accountStore";
+import { analyticsStore } from "../stores/analyticsStore";
 
 const Dashboard: Component = () => {
   const navigate = useNavigate();
+
+  onMount(() => {
+    analyticsStore.refresh();
+  });
 
   // Active preset info
   const activePreset = () => {
@@ -51,16 +56,12 @@ const Dashboard: Component = () => {
   const totalRequests = () => requestStore.requests().length;
   const successRate = () => {
     const all = requestStore.requests();
-    if (all.length === 0) return null;
-    const successes = all.filter((r) => r.statusCode && r.statusCode < 400).length;
-    return Math.round((successes / all.length) * 100);
+    const completed = all.filter((r) => r.statusCode !== undefined);
+    if (completed.length === 0) return null;
+    const successes = completed.filter((r) => (r.statusCode ?? 0) < 400).length;
+    return Math.round((successes / completed.length) * 100);
   };
-  const avgLatency = () => {
-    const all = requestStore.requests().filter((r) => r.latencyMs);
-    if (all.length === 0) return null;
-    const sum = all.reduce((acc, r) => acc + (r.latencyMs ?? 0), 0);
-    return Math.round(sum / all.length);
-  };
+  const estimatedCost = () => analyticsStore.filteredCost();
 
   return (
     <div class="space-y-6">
@@ -77,14 +78,14 @@ const Dashboard: Component = () => {
       <div class="grid grid-cols-3 gap-3">
         {/* Total requests */}
         <GlassCard class="!p-4 cursor-pointer hover:border-white/[0.15] transition-colors" onClick={() => navigate("/analytics")}>
-          <p class="font-caption text-text-muted mb-1">Total Requests</p>
+          <p class="font-caption text-text-muted mb-1">Total request</p>
           <p class="text-2xl font-semibold text-text leading-none">{totalRequests()}</p>
           <p class="font-caption text-text-muted mt-1">this session</p>
         </GlassCard>
 
         {/* Success rate */}
         <GlassCard class="!p-4 cursor-pointer hover:border-white/[0.15] transition-colors" onClick={() => navigate("/analytics")}>
-          <p class="font-caption text-text-muted mb-1">Success Rate</p>
+          <p class="font-caption text-text-muted mb-1">Success rate</p>
           <Show when={successRate() !== null} fallback={
             <p class="text-2xl font-semibold text-text-muted leading-none">—</p>
           }>
@@ -95,15 +96,15 @@ const Dashboard: Component = () => {
           <p class="font-caption text-text-muted mt-1">of all requests</p>
         </GlassCard>
 
-        {/* Avg latency */}
+        {/* Estimated cost */}
         <GlassCard class="!p-4 cursor-pointer hover:border-white/[0.15] transition-colors" onClick={() => navigate("/analytics")}>
-          <p class="font-caption text-text-muted mb-1">Avg Latency</p>
-          <Show when={avgLatency() !== null} fallback={
+          <p class="font-caption text-text-muted mb-1">Est. cost</p>
+          <Show when={estimatedCost() !== null} fallback={
             <p class="text-2xl font-semibold text-text-muted leading-none">—</p>
           }>
-            <p class="text-2xl font-semibold text-text leading-none">{avgLatency()}</p>
+            <p class="text-2xl font-semibold text-text leading-none">${(estimatedCost() ?? 0).toFixed(2)}</p>
           </Show>
-          <p class="font-caption text-text-muted mt-1">milliseconds</p>
+          <p class="font-caption text-text-muted mt-1">estimated spend</p>
         </GlassCard>
       </div>
 

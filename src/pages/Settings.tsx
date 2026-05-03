@@ -1,7 +1,7 @@
 import type { Component } from "solid-js";
 import { createSignal, createResource, Show, Suspense } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { check, Update } from "@tauri-apps/plugin-updater";
+import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import GlassCard from "../components/GlassCard";
 import Button from "../components/Button";
