@@ -15,9 +15,9 @@ export interface RequestEvent {
   statusCode?: number;
   latencyMs?: number;
   tokensUsed?: number;
-  requestHeaders?: Record<string, string>;
+  requestHeaders?: Record<string, unknown>;
   requestBody?: string;
-  responseHeaders?: Record<string, string>;
+  responseHeaders?: Record<string, unknown>;
   responseBody?: string;
   inFlight: boolean;
 }
@@ -124,6 +124,7 @@ async function startStream() {
   try {
     await invoke("start_event_stream");
   } catch (e) {
+    setStreamConnected(false);
     setStreamError(String(e));
   }
 }

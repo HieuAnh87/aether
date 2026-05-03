@@ -1,7 +1,7 @@
 import type { JSX } from "solid-js";
 
 interface BadgeProps {
-  variant?: "active" | "warning" | "error" | "neutral" | "anthropic" | "openai" | "google";
+  variant?: "active" | "warning" | "error" | "neutral" | "anthropic" | "openai" | "google" | "vertexai";
   children: JSX.Element;
   class?: string;
 }
@@ -23,6 +23,8 @@ const Badge = (props: BadgeProps) => {
         return "bg-openai/20 text-openai";
       case "google":
         return "bg-google/20 text-google";
+      case "vertexai":
+        return "bg-vertexai/20 text-vertexai";
     }
   };
 

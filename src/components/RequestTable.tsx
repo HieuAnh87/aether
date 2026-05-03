@@ -6,6 +6,7 @@ const PROVIDER_COLORS: Record<string, string> = {
   anthropic: "text-purple-400",
   openai: "text-emerald-400",
   google: "text-blue-400",
+  vertexai: "text-violet-400",
 };
 
 function formatTime(timestamp: string): string {
@@ -67,7 +68,7 @@ const RequestTable: Component = () => {
                     <td class="px-3 py-2 font-mono font-caption text-text whitespace-nowrap uppercase">
                       {req.method}
                     </td>
-                    <td class="px-3 py-2 font-caption text-text truncate max-w-xs">
+                    <td class="px-3 py-2 font-caption text-text truncate max-w-xs" title={req.endpoint}>
                       {req.endpoint}
                     </td>
                     <td class={`px-3 py-2 font-caption whitespace-nowrap capitalize ${getProviderColorClass(req.provider)}`}>

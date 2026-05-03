@@ -1,4 +1,4 @@
-import type { Component } from "solid-js";
+import type { Component, JSX } from "solid-js";
 import { Show, createSignal } from "solid-js";
 import { requestStore } from "../stores/requestStore";
 
@@ -9,7 +9,7 @@ function truncate(text: string): { value: string; truncated: boolean } {
   return { value: text.slice(0, TRUNCATE_LEN), truncated: true };
 }
 
-function formatHeaders(headers?: Record<string, string>): string {
+function formatHeaders(headers?: Record<string, unknown>): string {
   if (!headers || Object.keys(headers).length === 0) return "(none)";
   return JSON.stringify(headers, null, 2);
 }
@@ -24,7 +24,7 @@ function getStatusDotClass(statusCode?: number): string {
 
 interface SectionProps {
   title: string;
-  children: any;
+  children: JSX.Element;
 }
 
 const Section: Component<SectionProps> = (props) => {

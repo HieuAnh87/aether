@@ -140,7 +140,7 @@ pub fn get_proxy_status(
 use crate::keychain;
 
 /// The providers we support
-const SUPPORTED_PROVIDERS: &[&str] = &["anthropic", "openai", "google"];
+const SUPPORTED_PROVIDERS: &[&str] = &["anthropic", "openai", "google", "vertexai"];
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -225,6 +225,15 @@ pub async fn validate_api_key(
                 .await
         }
         "google" => {
+            client
+                .get(format!(
+                    "https://generativelanguage.googleapis.com/v1/models?key={}",
+                    key
+                ))
+                .send()
+                .await
+        }
+        "vertexai" => {
             client
                 .get(format!(
                     "https://generativelanguage.googleapis.com/v1/models?key={}",

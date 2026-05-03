@@ -8,10 +8,11 @@ export interface ProviderAccountInfo {
   status: string; // "verified" | "unverified" | "none"
 }
 
-const PROVIDER_META: Record<string, { name: string; color: string; icon: string }> = {
-  anthropic: { name: "Anthropic", color: "#A855F7", icon: "A" },
-  openai: { name: "OpenAI", color: "#10B981", icon: "O" },
-  google: { name: "Google", color: "#3B82F6", icon: "G" },
+const PROVIDER_META: Record<string, { name: string; color: string; icon: string; logo: string }> = {
+  anthropic: { name: "Anthropic", color: "#A855F7", icon: "AN", logo: "/logos/anthropic.svg" },
+  openai: { name: "OpenAI", color: "#10B981", icon: "OP", logo: "/logos/openai.svg" },
+  google: { name: "Google", color: "#3B82F6", icon: "GO", logo: "/logos/google.svg" },
+  vertexai: { name: "Vertex AI", color: "#6759F4", icon: "VX", logo: "/logos/vertexai.svg" },
 };
 
 const [version, setVersion] = createSignal(0);
@@ -48,7 +49,7 @@ function refresh(): void {
 }
 
 function getProviderMeta(provider: string) {
-  return PROVIDER_META[provider] || { name: provider, color: "#6B7280", icon: "?" };
+  return PROVIDER_META[provider] || { name: provider, color: "#6B7280", icon: "?", logo: "" };
 }
 
 export const accountStore = {

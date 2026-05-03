@@ -16,6 +16,7 @@ function providerColor(modelId: string): string {
   if (provider === "anthropic" || provider === "troll") return "#A855F7";
   if (provider === "openai") return "#10B981";
   if (provider === "google") return "#3B82F6";
+  if (provider === "vertexai") return "#6759F4";
   return "#6B7280";
 }
 

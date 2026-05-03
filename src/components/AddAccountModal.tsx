@@ -98,7 +98,7 @@ const AddAccountModal: Component<AddAccountModalProps> = (props) => {
           <div>
             <label class="mb-1 block font-caption text-text-secondary">Provider</label>
             <div class="flex gap-2">
-              <For each={["anthropic", "openai", "google"] as const}>
+              <For each={["anthropic", "openai", "google", "vertexai"] as const}>
                 {(p) => {
                   const meta = accountStore.getProviderMeta(p);
                   return (

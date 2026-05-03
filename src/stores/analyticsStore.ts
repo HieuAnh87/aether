@@ -1,6 +1,123 @@
 import { createSignal, createMemo } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
+/** $0.50 per million tokens — flat rate for cost calculation */
+const COST_RATE = 0.50 / 1_000_000; // = 0.0000005
+
+/**
+ * Per-model pricing in USD per million tokens.
+ * Format: { [provider]: { [model]: { input: $/M, output: $/M } } }
+ * Defaults to input/output 50/50 split when rates are equal (common case).
+ * Rates as of May 2026.
+ */
+const MODEL_PRICING: Record<string, Record<string, { input: number; output: number }>> = {
+  openai: {
+    "gpt-5.4":          { input: 2.50, output: 5.00 },
+    "gpt-5.4-mini":     { input: 0.75, output: 4.50 },
+    "gpt-5.4-nano":     { input: 0.20, output: 1.25 },
+    "gpt-5.2":          { input: 1.75, output: 14.00 },
+    "gpt-5.2-pro":      { input: 21.00, output: 168.00 },
+    "gpt-5.1":          { input: 1.25, output: 10.00 },
+    "gpt-5":            { input: 1.25, output: 10.00 },
+    "gpt-5-mini":       { input: 0.25, output: 2.00 },
+    "gpt-5-nano":       { input: 0.05, output: 0.40 },
+    "gpt-5-pro":        { input: 15.00, output: 120.00 },
+    "gpt-4.1":          { input: 2.00, output: 8.00 },
+    "gpt-4.1-mini":     { input: 0.40, output: 1.60 },
+    "gpt-4.1-nano":     { input: 0.10, output: 0.40 },
+    "gpt-4o":           { input: 2.50, output: 10.00 },
+    "gpt-4o-mini":      { input: 0.15, output: 0.60 },
+    "o1":               { input: 15.00, output: 60.00 },
+    "o1-pro":           { input: 150.00, output: 600.00 },
+    "o3":               { input: 2.00, output: 8.00 },
+    "o4-mini":          { input: 1.10, output: 4.40 },
+    "o3-mini":          { input: 1.10, output: 4.40 },
+    "o1-mini":          { input: 1.10, output: 4.40 },
+    "gpt-4-turbo":      { input: 10.00, output: 30.00 },
+    "gpt-4":            { input: 30.00, output: 60.00 },
+    "gpt-3.5-turbo":   { input: 0.50, output: 1.50 },
+  },
+  anthropic: {
+    "claude-opus-4.6":  { input: 5.00, output: 25.00 },
+    "claude-opus-4.5":  { input: 5.00, output: 25.00 },
+    "claude-sonnet-4.6":{ input: 3.00, output: 15.00 },
+    "claude-sonnet-4.5":{ input: 3.00, output: 15.00 },
+    "claude-sonnet-4":  { input: 3.00, output: 15.00 },
+    "claude-haiku-4.5": { input: 1.00, output: 5.00 },
+    "claude-haiku-3.5": { input: 0.80, output: 4.00 },
+    "claude-haiku-3":   { input: 0.25, output: 1.25 },
+  },
+  google: {
+    "gemini-3.1-pro":   { input: 2.00, output: 12.00 },
+    "gemini-2.5-pro":   { input: 1.25, output: 10.00 },
+    "gemini-3-flash":   { input: 0.50, output: 3.00 },
+    "gemini-2.5-flash": { input: 0.15, output: 0.60 },
+    "gemini-2.0-flash": { input: 0.10, output: 0.40 },
+    "gemini-2.0-flash-lite": { input: 0.075, output: 0.30 },
+  },
+  vertexai: {
+    "gemini-3.1-pro":   { input: 2.00, output: 12.00 },
+    "gemini-2.5-pro":   { input: 1.25, output: 10.00 },
+    "gemini-3-flash":   { input: 0.50, output: 3.00 },
+    "gemini-2.5-flash": { input: 0.15, output: 0.60 },
+    "gemini-2.0-flash": { input: 0.10, output: 0.40 },
+    "gemini-2.0-flash-lite": { input: 0.075, output: 0.30 },
+  },
+  deepseek: {
+    "deepseek-chat":    { input: 0.30, output: 0.50 },
+    "deepseek-coder":   { input: 0.30, output: 0.50 },
+  },
+  perplexity: {
+    "sonar":            { input: 1.00, output: 1.00 },
+    "sonar-pro":       { input: 2.00, output: 2.00 },
+    "sonar-reasoning":  { input: 2.00, output: 2.00 },
+  },
+  xai: {
+    "grok-3":          { input: 2.00, output: 6.00 },
+    "grok-2":           { input: 2.00, output: 6.00 },
+    "grok-3-beta":      { input: 5.00, output: 15.00 },
+  },
+  cohere: {
+    "command-r-plus":   { input: 3.00, output: 15.00 },
+    "command-r":        { input: 1.00, output: 1.00 },
+  },
+  mistral: {
+    "mistral-large":    { input: 2.00, output: 6.00 },
+    "mistral-small":    { input: 0.10, output: 0.30 },
+    "mistral-medium":   { input: 0.50, output: 1.50 },
+  },
+  fireworks: {
+    "firefunction":     { input: 0.70, output: 2.00 },
+  },
+  azure: {
+    // Azure OpenAI uses same pricing as OpenAI, but key is the deployment name
+    // which user controls. Map conservatively.
+  },
+};
+
+// Default flat rate if model not found in pricing map (fallback)
+const DEFAULT_RATE_PER_M = 0.50;
+
+/** Look up $/M rate for a model. Falls back to DEFAULT_RATE_PER_M. */
+function lookupModelRate(provider: string, model: string): { input: number; output: number } {
+  // Try direct provider match first
+  const providerRates = MODEL_PRICING[provider];
+  if (providerRates) {
+    const modelRates = providerRates[model];
+    if (modelRates) return modelRates;
+  }
+  // Fallback: try to infer provider from model name
+  const inferred = inferProviderFromModel(model);
+  if (inferred !== "unknown" && inferred !== "other") {
+    const inferredRates = MODEL_PRICING[inferred];
+    if (inferredRates) {
+      const modelRates = inferredRates[model];
+      if (modelRates) return modelRates;
+    }
+  }
+  return { input: DEFAULT_RATE_PER_M, output: DEFAULT_RATE_PER_M };
+}
+
 // ---------------------------------------------------------------------------
 // Types — mirrors Rust UsageResponse/UsageInner structs (snake_case from serde)
 // ---------------------------------------------------------------------------
@@ -39,7 +156,8 @@ export interface UsageResponse {
 
 /** Flattened provider summary for display */
 export interface ProviderStat {
-  provider: string;
+  provider: string;   // normalized display name (e.g. "openai")
+  rawProvider?: string; // original raw key from CLIProxy
   requests: number;
   tokens: number;
   models: string[];
@@ -56,7 +174,7 @@ export type CacheStatus =
   | { source: "localStorage"; at: number }
   | { source: "disk" };
 
-export type TimeRange = "today" | "7d" | "30d" | "month" | "all";
+export type TimeRange = "24h" | "7d" | "30d" | "month" | "all";
 
 export interface AnalyticsHealth {
   lastSuccessSyncAt: number | null;
@@ -87,7 +205,7 @@ function rangeCutoff(range: TimeRange): string | null {
   if (range === "7d") cutoff.setDate(cutoff.getDate() - 7);
   else if (range === "30d") cutoff.setDate(cutoff.getDate() - 30);
   else if (range === "month") { cutoff.setDate(1); cutoff.setHours(0, 0, 0, 0); }
-  else if (range === "today") return today;
+  else if (range === "24h") return today;
   return cutoff.toISOString().slice(0, 10);
 }
 
@@ -159,16 +277,35 @@ const reqByDay = createMemo(() => {
     .sort((a, b) => a.date.localeCompare(b.date));
 });
 
+/** Raw daily token data sorted ascending — used by costByDay and filteredTokByDay */
+const tokByDay = createMemo(() => {
+  const map = lifetimeAccumulator()?.tokens_by_day ?? {};
+  return Object.entries(map)
+    .map(([date, tokens]) => ({ date, tokens }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+});
+
 /** Daily request data filtered by active time range, capped at 7 most recent days */
 const filteredReqByDay = createMemo(() => {
   const range = timeRange();
   const all = reqByDay();
   if (range === "all") return all;
-  if (range === "today") return all.slice(-1);
+  if (range === "24h") return all.slice(-1);
 
   const cutoffStr = rangeCutoff(range);
   if (!cutoffStr) return all;
 
+  return all.filter((d) => d.date >= cutoffStr).slice(-7);
+});
+
+/** Daily cost data filtered by active time range */
+const costByDay = createMemo(() => {
+  const range = timeRange();
+  const all = tokByDay();
+  if (range === "all") return all;
+  if (range === "24h") return all.slice(-1);
+  const cutoffStr = rangeCutoff(range);
+  if (!cutoffStr) return all;
   return all.filter((d) => d.date >= cutoffStr).slice(-7);
 });
 
@@ -184,7 +321,7 @@ const todayRequests = createMemo(() => {
  */
 const filteredTotalRequests = createMemo(() => {
   const range = timeRange();
-  if (range === "today") return todayRequests();
+  if (range === "24h") return todayRequests();
   if (range === "all") return totalRequests();
   return filteredReqByDay().reduce((sum, d) => sum + d.count, 0);
 });
@@ -195,7 +332,7 @@ const filteredTotalRequests = createMemo(() => {
  */
 const filteredTotalTokens = createMemo(() => {
   const range = timeRange();
-  if (range === "today") {
+  if (range === "24h") {
     const today = localDateString();
     return lifetimeAccumulator()?.tokens_by_day[today] ?? 0;
   }
@@ -207,6 +344,9 @@ const filteredTotalTokens = createMemo(() => {
     .filter(([date]) => date >= cutoffStr)
     .reduce((sum, [, v]) => sum + v, 0);
 });
+
+/** Estimated cost within the active time range. tokens × $0.50/M. */
+const filteredCost = createMemo(() => filteredTotalTokens() * COST_RATE);
 
 /**
  * Failed requests within the active time range.
@@ -243,7 +383,9 @@ const providerStats = createMemo((): ProviderStat[] => {
         tokens += stats.tokens ?? 0;
         modelNames.push(model);
       }
-      return { provider, requests, tokens, models: modelNames };
+      // Normalize provider: strip URL paths, keep hostname. "POST /v1/chat/completions" → "openai"
+      const normalized = normalizeProviderName(provider);
+      return { provider: normalized, rawProvider: provider, requests, tokens, models: modelNames };
     })
     .map((p) => ({
       ...p,
@@ -253,6 +395,81 @@ const providerStats = createMemo((): ProviderStat[] => {
     }))
     .filter((p) => p.requests > 0)
     .sort((a, b) => b.requests - a.requests);
+});
+
+/** Normalize a raw provider key into a display name. */
+function normalizeProviderName(raw: string): string {
+  if (!raw) return "unknown";
+  // URL path like "POST /v1/chat/completions" → extract clean name
+  if (raw.startsWith("POST") || raw.startsWith("GET") || raw.startsWith("/")) {
+    const parts = raw.split(" ");
+    const path = parts[parts.length - 1] ?? raw;
+    if (path.includes("chat")) return "openai";
+    if (path.includes("models") && path.includes("v1")) return "google";
+    if (path.includes("anthropic")) return "anthropic";
+    if (path.includes("vertexai") || path.includes("google-vertex")) return "vertexai";
+    if (path.includes("deepseek")) return "deepseek";
+    if (path.includes("perplexity")) return "perplexity";
+    if (path.includes("xai") || path.includes("grok")) return "xai";
+    if (path.includes("cohere")) return "cohere";
+    if (path.includes("mistral")) return "mistral";
+    if (path.includes("minimax")) return "minimax";
+    return path.replace(/^\//, "").split("/")[0];
+  }
+  // Already a clean name like "openai", "anthropic"
+  return raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/** Normalize a model name for pricing lookup (CLIProxy uses "-" but MODEL_PRICING uses "."). */
+function normalizeModelName(model: string): string {
+  return model.toLowerCase().replace(/-/g, ".");
+}
+
+/**
+ * Infer provider from model name when raw provider is a URL or unknown.
+ * Only used as fallback when normalizeProviderName returns "unknown" or a generic path token.
+ */
+function inferProviderFromModel(model: string): string {
+  const m = model.toLowerCase();
+  if (m.includes("claude")) return "anthropic";
+  if (m.includes("gpt") || m.startsWith("o1") || m.startsWith("o3") || m.startsWith("o4")) return "openai";
+  if (m.includes("gemini") || m.includes("gemma")) return "google";
+  if (m.includes("deepseek")) return "deepseek";
+  if (m.includes("sonar")) return "perplexity";
+  if (m.includes("grok")) return "xai";
+  if (m.includes("command-r")) return "cohere";
+  if (m.includes("mistral")) return "mistral";
+  if (m.includes("minimax")) return "minimax";
+  if (m.includes("llama") || m.includes("qwen") || m.includes("mixtral")) return "other";
+  return "unknown";
+}
+
+/** Per-model cost breakdown using real per-model pricing. Top 5, rounded to 3 decimal places. */
+const costByModel = createMemo((): { model: string; provider: string; cost: number }[] => {
+  const apis = lifetimeAccumulator()?.apis ?? {};
+  const total = totalTokens();
+  const filtered = filteredTotalTokens();
+  const factor = total > 0 ? filtered / total : 0;
+
+  const results: { model: string; provider: string; cost: number }[] = [];
+  for (const [rawProvider, models] of Object.entries(apis)) {
+    const provider = normalizeProviderName(rawProvider);
+    for (const [rawModel, stats] of Object.entries(models)) {
+      const model = normalizeModelName(rawModel);
+      const tokens = Math.round((stats.tokens ?? 0) * factor);
+      if (tokens <= 0) continue;
+
+      const rates = lookupModelRate(provider, model);
+      // Use average of input/output as approximation (tokens are total, no split available)
+      const avgRate = (rates.input + rates.output) / 2 / 1_000_000;
+      const cost = parseFloat((tokens * avgRate).toFixed(3));
+
+      results.push({ model: rawModel, provider, cost });
+    }
+  }
+  return results
+    .sort((a, b) => b.cost - a.cost)
+    .slice(0, 5);
 });
 
 // ---------------------------------------------------------------------------
@@ -653,12 +870,16 @@ export const analyticsStore = {
   reqByHour,
   tokByHour,
   reqByDay,
+  tokByDay,
   filteredReqByDay,
   todayRequests,
   filteredTotalRequests,
   filteredTotalTokens,
   filteredFailedRequests,
   providerStats,
+  filteredCost,
+  costByDay,
+  costByModel,
   // Time range
   timeRange,
   setTimeRange,

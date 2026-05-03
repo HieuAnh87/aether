@@ -12,6 +12,8 @@ pub struct AppSettings {
     pub proxy_port: u16,
     #[serde(default = "default_management_key")]
     pub management_key: String,
+    #[serde(default = "default_theme")]
+    pub theme: String,
 }
 
 fn default_auto_start() -> bool {
@@ -23,6 +25,9 @@ fn default_port() -> u16 {
 fn default_management_key() -> String {
     "aether-managed".to_string()
 }
+fn default_theme() -> String {
+    "dark".to_string()
+}
 
 impl Default for AppSettings {
     fn default() -> Self {
@@ -31,6 +36,7 @@ impl Default for AppSettings {
             launch_at_login: false,
             proxy_port: 8317,
             management_key: "aether-managed".to_string(),
+            theme: "dark".to_string(),
         }
     }
 }

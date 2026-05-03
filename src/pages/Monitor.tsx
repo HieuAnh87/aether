@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { Show, onMount } from "solid-js";
+import { Show, onMount, onCleanup } from "solid-js";
 import { requestStore } from "../stores/requestStore";
 import RequestFilterBar from "../components/RequestFilterBar";
 import RequestTable from "../components/RequestTable";
@@ -8,6 +8,7 @@ import RequestDetailPanel from "../components/RequestDetailPanel";
 const Monitor: Component = () => {
   onMount(() => {
     requestStore.startStream();
+    onCleanup(() => requestStore.cleanup());
   });
 
   return (

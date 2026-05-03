@@ -1,5 +1,6 @@
 import type { Component } from "solid-js";
 import { For, Show, Suspense } from "solid-js";
+import { useNavigate } from "@solidjs/router";
 import GlassCard from "../components/GlassCard";
 import Badge from "../components/Badge";
 import Button from "../components/Button";
@@ -9,6 +10,8 @@ import { requestStore } from "../stores/requestStore";
 import { accountStore } from "../stores/accountStore";
 
 const Dashboard: Component = () => {
+  const navigate = useNavigate();
+
   // Active preset info
   const activePreset = () => {
     const presets = presetStore.presets();
@@ -73,14 +76,14 @@ const Dashboard: Component = () => {
       {/* Quick stats row */}
       <div class="grid grid-cols-3 gap-3">
         {/* Total requests */}
-        <GlassCard class="!p-4">
+        <GlassCard class="!p-4 cursor-pointer hover:border-white/[0.15] transition-colors" onClick={() => navigate("/analytics")}>
           <p class="font-caption text-text-muted mb-1">Total Requests</p>
           <p class="text-2xl font-semibold text-text leading-none">{totalRequests()}</p>
           <p class="font-caption text-text-muted mt-1">this session</p>
         </GlassCard>
 
         {/* Success rate */}
-        <GlassCard class="!p-4">
+        <GlassCard class="!p-4 cursor-pointer hover:border-white/[0.15] transition-colors" onClick={() => navigate("/analytics")}>
           <p class="font-caption text-text-muted mb-1">Success Rate</p>
           <Show when={successRate() !== null} fallback={
             <p class="text-2xl font-semibold text-text-muted leading-none">—</p>
@@ -93,7 +96,7 @@ const Dashboard: Component = () => {
         </GlassCard>
 
         {/* Avg latency */}
-        <GlassCard class="!p-4">
+        <GlassCard class="!p-4 cursor-pointer hover:border-white/[0.15] transition-colors" onClick={() => navigate("/analytics")}>
           <p class="font-caption text-text-muted mb-1">Avg Latency</p>
           <Show when={avgLatency() !== null} fallback={
             <p class="text-2xl font-semibold text-text-muted leading-none">—</p>
@@ -206,10 +209,14 @@ const Dashboard: Component = () => {
                   <GlassCard class="!p-4 transition-all duration-150 hover:border-white/[0.12]">
                     <div class="flex items-center gap-3">
                       <div
-                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white shadow-sm"
+                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
                         style={{ "background-color": meta().color }}
                       >
-                        {meta().icon}
+                        <img
+                          src={meta().logo}
+                          alt={meta().name}
+                          class="h-5 w-5 object-contain invert"
+                        />
                       </div>
                       <div class="min-w-0">
                         <p class="font-body text-text truncate">{meta().name}</p>

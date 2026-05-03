@@ -5,6 +5,7 @@ import { AppShell, Sidebar, NavItem, NavGroup, ToastProvider } from "./component
 import { Dashboard, Analytics, Presets, Monitor, Logs, Agents, AgentProviders, Accounts, Settings, CliproxyOverview, CliproxyProviders, CliproxyControlPanel, Popup } from "./pages";
 import { proxyStore } from "./stores/proxyStore";
 import { initConfigWatcher, cleanupConfigWatcher } from "./stores/configWatcher";
+import { themeStore as _themeStore } from "./stores/themeStore";
 
 /* Simple SVG icons for nav items */
 const IconDashboard = (): JSX.Element => (

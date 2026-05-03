@@ -1,17 +1,21 @@
 import type { Component } from "solid-js";
-import { createSignal, createResource, Show } from "solid-js";
+import { createSignal, createResource, Show, Suspense } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
-import { check } from "@tauri-apps/plugin-updater";
+import { check, Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import GlassCard from "../components/GlassCard";
 import Button from "../components/Button";
 import { useToast } from "../components/Toast";
 import { proxyStore } from "../stores/proxyStore";
+import { themeStore } from "../stores/themeStore";
+
+const DEFAULT_PROXY_PORT = 8317;
 
 interface AppSettings {
   autoStartProxy: boolean;
   launchAtLogin: boolean;
   proxyPort: number;
+  theme: "dark" | "light";
 }
 
 interface VersionInfo {
@@ -32,7 +36,7 @@ const Settings: Component = () => {
   const [pendingPort, setPendingPort] = createSignal<number | null>(null);
   const [saving, setSaving] = createSignal(false);
 
-  const updateSetting = async (key: keyof AppSettings, value: any) => {
+  const updateSetting = async <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     const current = settings();
     if (!current) return;
     const updated = { ...current, [key]: value };
@@ -63,7 +67,7 @@ const Settings: Component = () => {
   };
 
   const handleRestartWithNewPort = async () => {
-    const port = pendingPort() || settings()?.proxyPort || 8317;
+    const port = pendingPort() || settings()?.proxyPort || DEFAULT_PROXY_PORT;
     await savePort();
     try {
       await proxyStore.restartProxy(port);
@@ -101,16 +105,23 @@ const Settings: Component = () => {
   };
 
   const installUpdate = async () => {
+    const update = updateAvailable();
+    if (!update) return;
+
     setUpdating(true);
     setUpdateProgress(0);
     try {
-      const update = await check();
-      if (!update) return;
+      // Re-check to get the Update object for downloadAndInstall
+      const freshUpdate = await check();
+      if (!freshUpdate) {
+        toast.error("Update no longer available");
+        return;
+      }
 
       let downloaded = 0;
       let contentLength = 0;
 
-      await update.downloadAndInstall((event) => {
+      await freshUpdate.downloadAndInstall((event) => {
         switch (event.event) {
           case 'Started':
             contentLength = event.data.contentLength ?? 0;
@@ -140,9 +151,25 @@ const Settings: Component = () => {
     <div>
       <h1 class="font-title text-text mb-6">Settings</h1>
 
-      {/* General Section */}
-      <h2 class="font-section-header text-text-secondary mb-3">General</h2>
-      <GlassCard>
+      {/* Loading skeleton */}
+      <Suspense fallback={
+        <div class="space-y-6">
+          <div class="h-8 w-32 bg-border/30 rounded animate-pulse" />
+          <GlassCard><div class="space-y-5 h-40 bg-border/20 rounded animate-pulse" /></GlassCard>
+          <GlassCard><div class="space-y-5 h-24 bg-border/20 rounded animate-pulse" /></GlassCard>
+          <GlassCard><div class="space-y-3 h-28 bg-border/20 rounded animate-pulse" /></GlassCard>
+        </div>
+      }>
+        {/* Error state */}
+        <Show when={(settings as unknown as { error?: unknown }).error}>
+          <GlassCard>
+            <p class="text-text-muted text-center py-4">Failed to load settings</p>
+          </GlassCard>
+        </Show>
+
+        {/* General Section */}
+        <h2 class="font-section-header text-text-secondary mb-3">General</h2>
+        <GlassCard>
         <div class="space-y-5">
           {/* Auto-start proxy toggle */}
           <div class="flex items-center justify-between">
@@ -181,6 +208,31 @@ const Settings: Component = () => {
               <span
                 class={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
                   settings()?.launchAtLogin ? "translate-x-6" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Theme toggle */}
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="font-body text-text">Appearance</p>
+              <p class="font-caption text-text-muted">Switch between light and dark mode</p>
+            </div>
+            <button
+              class={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                themeStore.theme() === "light" ? "bg-primary" : "bg-border"
+              }`}
+              onClick={() => {
+                const newTheme = themeStore.theme() === "dark" ? "light" : "dark";
+                themeStore.setTheme(newTheme);
+                updateSetting("theme", newTheme);
+              }}
+              disabled={saving()}
+            >
+              <span
+                class={`inline-block h-4 w-4 rounded-full bg-white transition-transform ${
+                  themeStore.theme() === "light" ? "translate-x-6" : "translate-x-1"
                 }`}
               />
             </button>
@@ -239,7 +291,7 @@ const Settings: Component = () => {
                 min="1024"
                 max="65535"
                 class="w-24 rounded-md border border-border bg-glass-bg px-3 py-1.5 text-sm text-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                value={pendingPort() ?? settings()?.proxyPort ?? 8317}
+                value={pendingPort() ?? settings()?.proxyPort ?? DEFAULT_PROXY_PORT}
                 onInput={(e: any) => handlePortChange(e.currentTarget.value)}
               />
             </div>
@@ -262,7 +314,7 @@ const Settings: Component = () => {
               <p class="font-caption text-text-muted">Use this URL in your AI client config</p>
             </div>
             <code class="font-mono text-sm text-primary">
-              http://localhost:{pendingPort() ?? settings()?.proxyPort ?? 8317}/v1
+              http://localhost:{pendingPort() ?? settings()?.proxyPort ?? DEFAULT_PROXY_PORT}/v1
             </code>
           </div>
         </div>
@@ -330,6 +382,7 @@ const Settings: Component = () => {
           </div>
         </div>
       </GlassCard>
+      </Suspense>
     </div>
   );
 };

@@ -1,7 +1,7 @@
 import type { Component } from "solid-js";
 import { requestStore, type FilterStatus } from "../stores/requestStore";
 
-const PROVIDERS = ["anthropic", "openai", "google"] as const;
+const PROVIDERS = ["anthropic", "openai", "google", "vertexai"] as const;
 const STATUS_OPTIONS: { label: string; value: FilterStatus }[] = [
   { label: "All", value: "all" },
   { label: "Success", value: "success" },

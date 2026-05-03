@@ -13,7 +13,7 @@ import {
   Filler,
 } from "chart.js";
 import type { ChartData, ChartOptions } from "chart.js";
-import { Bar, Line, Doughnut } from "solid-chartjs";
+import { Bar, Line } from "solid-chartjs";
 import GlassCard from "../components/GlassCard";
 import { analyticsStore } from "../stores/analyticsStore";
 
@@ -44,6 +44,7 @@ const PRIMARY = "rgba(99,102,241,1)";
 const PRIMARY_BG = "rgba(99,102,241,0.15)";
 const ACCENT = "rgba(56,189,248,1)";
 const ACCENT_BG = "rgba(56,189,248,0.15)";
+const COST_COLOR = "rgba(251,191,36,1)";     // amber — cost line
 
 /** Provider color palette for charts/badges */
 const PROVIDER_COLORS = [
@@ -99,21 +100,32 @@ const lineOptions: ChartOptions<"line"> = {
   scales: baseScales,
 };
 
-const doughnutOptions: ChartOptions<"doughnut"> = {
+const dualAxisOptions: ChartOptions<"line"> = {
   responsive: true,
   maintainAspectRatio: false,
-  plugins: {
-    legend: {
-      display: true,
-      position: "bottom" as const,
-      labels: {
+  plugins: basePlugins,
+  scales: {
+    x: {
+      ...baseScales.x,
+      ticks: {
         color: TICK_COLOR,
         font: { size: 11 },
-        padding: 12,
-        boxWidth: 12,
+        autoSkip: false,
+        maxRotation: 0,
       },
     },
-    tooltip: basePlugins.tooltip,
+    y: {
+      ...baseScales.y,
+      position: "left" as const,
+      title: { display: true, text: "Tokens", color: TICK_COLOR, font: { size: 10 } },
+    },
+    y1: {
+      ...baseScales.y,
+      position: "right" as const,
+      title: { display: true, text: "Cost ($)", color: TICK_COLOR, font: { size: 10 } },
+      grid: { drawOnChartArea: false },
+      ticks: { color: TICK_COLOR, font: { size: 11 }, callback: (v: number | string) => `$${Number(v).toFixed(2)}` },
+    },
   },
 };
 
@@ -123,7 +135,7 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) =>
 );
 
 const TIME_RANGES: { label: string; value: TimeRange }[] = [
-  { label: "Today", value: "today" },
+  { label: "24h", value: "24h" },
   { label: "7D", value: "7d" },
   { label: "30D", value: "30d" },
   { label: "Month", value: "month" },
@@ -139,6 +151,46 @@ function formatTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+const DEFAULT_RATE_PER_M = 0.50;
+
+/** Lookup $/M rate for a model (mirrors MODEL_PRICING from analyticsStore). */
+function lookupRate(provider: string, model: string): { input: number; output: number } {
+  const pricing: Record<string, Record<string, { input: number; output: number }>> = {
+    openai: {
+      "gpt-5.4": { input: 2.50, output: 5.00 }, "gpt-5.4-mini": { input: 0.75, output: 4.50 },
+      "gpt-5.4-nano": { input: 0.20, output: 1.25 }, "gpt-5.2": { input: 1.75, output: 14.00 },
+      "gpt-5.1": { input: 1.25, output: 10.00 }, "gpt-5": { input: 1.25, output: 10.00 },
+      "gpt-5-mini": { input: 0.25, output: 2.00 }, "gpt-5-nano": { input: 0.05, output: 0.40 },
+      "gpt-4.1": { input: 2.00, output: 8.00 }, "gpt-4.1-mini": { input: 0.40, output: 1.60 },
+      "gpt-4.1-nano": { input: 0.10, output: 0.40 }, "gpt-4o": { input: 2.50, output: 10.00 },
+      "gpt-4o-mini": { input: 0.15, output: 0.60 }, "o1": { input: 15.00, output: 60.00 },
+      "o1-pro": { input: 150.00, output: 600.00 }, "o3": { input: 2.00, output: 8.00 },
+      "o4-mini": { input: 1.10, output: 4.40 }, "o3-mini": { input: 1.10, output: 4.40 },
+      "o1-mini": { input: 1.10, output: 4.40 }, "gpt-4": { input: 30.00, output: 60.00 },
+      "gpt-3.5-turbo": { input: 0.50, output: 1.50 },
+    },
+    anthropic: {
+      "claude-opus-4.6": { input: 5.00, output: 25.00 }, "claude-opus-4.5": { input: 5.00, output: 25.00 },
+      "claude-sonnet-4.6": { input: 3.00, output: 15.00 }, "claude-sonnet-4.5": { input: 3.00, output: 15.00 },
+      "claude-haiku-4.5": { input: 1.00, output: 5.00 }, "claude-haiku-3.5": { input: 0.80, output: 4.00 },
+      "claude-haiku-3": { input: 0.25, output: 1.25 },
+    },
+    google: {
+      "gemini-3.1-pro": { input: 2.00, output: 12.00 }, "gemini-2.5-pro": { input: 1.25, output: 10.00 },
+      "gemini-3-flash": { input: 0.50, output: 3.00 }, "gemini-2.5-flash": { input: 0.15, output: 0.60 },
+      "gemini-2.0-flash": { input: 0.10, output: 0.40 }, "gemini-2.0-flash-lite": { input: 0.075, output: 0.30 },
+    },
+    deepseek: { "deepseek-chat": { input: 0.30, output: 0.50 }, "deepseek-coder": { input: 0.30, output: 0.50 } },
+    perplexity: { "sonar": { input: 1.00, output: 1.00 }, "sonar-pro": { input: 2.00, output: 2.00 } },
+    xai: { "grok-3": { input: 2.00, output: 6.00 }, "grok-2": { input: 2.00, output: 6.00 } },
+    cohere: { "command-r-plus": { input: 3.00, output: 15.00 }, "command-r": { input: 1.00, output: 1.00 } },
+    mistral: { "mistral-large": { input: 2.00, output: 6.00 }, "mistral-small": { input: 0.10, output: 0.30 } },
+  };
+  const p = pricing[provider]?.[model];
+  if (!p) return { input: DEFAULT_RATE_PER_M, output: DEFAULT_RATE_PER_M };
+  return p;
 }
 
 // ---------------------------------------------------------------------------
@@ -189,8 +241,7 @@ const Analytics: Component = () => {
   // Derived display values
   const totalReqs = () => analyticsStore.filteredTotalRequests().toLocaleString();
   const totalToks = () => formatTokens(analyticsStore.filteredTotalTokens());
-  const todayReqs = () => analyticsStore.todayRequests().toLocaleString();
-  const failedReqs = () => analyticsStore.filteredFailedRequests().toLocaleString();
+
   const activeRange = () => analyticsStore.timeRange();
   const isInitialLoad = () => analyticsStore.loading() && analyticsStore.usageStats() === null;
 
@@ -225,22 +276,106 @@ const Analytics: Component = () => {
     ],
   }));
 
-  const reqDayData = createMemo((): ChartData<"bar"> => {
-    const days = analyticsStore.filteredReqByDay();
+  /**
+   * Dual-axis Usage Trends chart:
+   * - 24h: hourly tokens (left) + hourly cost (right), 24 labels
+   * - 7d+: daily tokens (left) + daily cost (right), up to 7 day labels
+   * Right-axis cost uses $0.50/M flat rate applied to token counts.
+   */
+  const usageTrendsData = createMemo((): ChartData<"line"> => {
+    const range = activeRange();
+    const COST_RATE = 0.0000005;
+
+    if (range === "24h") {
+      // Hourly data: 24 labels, tokens from tokByHour, cost = tokens × rate
+      const tokArr = analyticsStore.tokByHour();
+      const costArr = tokArr.map((t) => t * COST_RATE);
+      return {
+        labels: HOUR_LABELS,
+        datasets: [
+          {
+            label: "Tokens",
+            data: tokArr,
+            yAxisID: "y",
+            fill: true,
+            backgroundColor: ACCENT_BG,
+            borderColor: ACCENT,
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.4,
+          },
+          {
+            label: "Cost",
+            data: costArr,
+            yAxisID: "y1",
+            fill: false,
+            backgroundColor: "transparent",
+            borderColor: COST_COLOR,
+            borderWidth: 2,
+            pointRadius: 0,
+            tension: 0.4,
+          },
+        ],
+      };
+    }
+
+    // Non-24h: build full label slots for the range, fill zeros for missing days
+    const allDays = analyticsStore.tokByDay();
+    const cutoff = (() => {
+      if (range === "7d") {
+        const d = new Date(); d.setDate(d.getDate() - 7);
+        return d.toISOString().slice(0, 10);
+      }
+      if (range === "30d") {
+        const d = new Date(); d.setDate(d.getDate() - 30);
+        return d.toISOString().slice(0, 10);
+      }
+      if (range === "month") {
+        const d = new Date(); d.setDate(1);
+        return d.toISOString().slice(0, 10);
+      }
+      return null; // "all"
+    })();
+    const tokDays = cutoff ? allDays.filter((d: { date: string; tokens: number }) => d.date >= cutoff).slice(-7) : allDays.slice(-7);
+
+    // Determine slot count and build full label slots
+    const slotCount = range === "7d" ? 7 : range === "30d" ? 30 : range === "month" ? 31 : allDays.length || 7;
+    const today = new Date();
+    const labelSlots: { dateStr: string; label: string }[] = [];
+    for (let i = slotCount - 1; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      labelSlots.push({ dateStr, label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) });
+    }
+    const tokDaysMap = new Map(tokDays.map((d) => [d.date, d.tokens]));
+    const tokenData = labelSlots.map((slot) => tokDaysMap.get(slot.dateStr) ?? 0);
+    const labels = labelSlots.map((slot) => slot.label);
+    const costData = tokenData.map((toks: number) => toks * COST_RATE);
+
     return {
-      labels: days.map((d) => {
-        // Parse as local date (append T00:00:00 avoids UTC interpretation)
-        const dt = new Date(`${d.date}T00:00:00`);
-        return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      }),
+      labels,
       datasets: [
         {
-          label: "Requests",
-          data: days.map((d) => d.count),
-          backgroundColor: PRIMARY_BG,
-          borderColor: PRIMARY,
+          label: "Tokens",
+          data: tokenData,
+          yAxisID: "y",
+          fill: true,
+          backgroundColor: ACCENT_BG,
+          borderColor: ACCENT,
           borderWidth: 2,
-          borderRadius: 4,
+          pointRadius: 3,
+          tension: 0.4,
+        },
+        {
+          label: "Cost",
+          data: costData,
+          yAxisID: "y1",
+          fill: false,
+          backgroundColor: "transparent",
+          borderColor: COST_COLOR,
+          borderWidth: 2,
+          pointRadius: 3,
+          tension: 0.4,
         },
       ],
     };
@@ -248,29 +383,12 @@ const Analytics: Component = () => {
 
   const dailyChartTitle = createMemo(() => {
     switch (activeRange()) {
-      case "today": return "Daily — Today";
+      case "24h": return "Usage Trends";
       case "7d": return "Daily — Last 7 Days";
       case "30d": return "Daily — Last 30 Days";
       case "month": return "Daily — This Month";
       case "all": return "Daily — All Time";
     }
-  });
-
-  /** Doughnut chart data for provider breakdown */
-  const providerDoughnutData = createMemo((): ChartData<"doughnut"> | null => {
-    const stats = analyticsStore.providerStats();
-    if (stats.length === 0) return null;
-    return {
-      labels: stats.map((p) => p.provider),
-      datasets: [
-        {
-          data: stats.map((p) => p.requests),
-          backgroundColor: stats.map((_, i) => PROVIDER_COLORS[i % PROVIDER_COLORS.length]),
-          borderWidth: 0,
-          hoverOffset: 4,
-        },
-      ],
-    };
   });
 
   const lastFetchedStr = () => {
@@ -307,7 +425,7 @@ const Analytics: Component = () => {
 
   const rangeSub = () => {
     switch (activeRange()) {
-      case "today": return "today";
+      case "24h": return "last 24 hours";
       case "7d": return "last 7 days";
       case "30d": return "last 30 days";
       case "month": return "this month";
@@ -387,19 +505,12 @@ const Analytics: Component = () => {
       </Show>
 
       {/* ── KPI Cards ── */}
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-4">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <KpiCard
           label="Total Requests"
           value={totalReqs()}
           sub={rangeSub()}
           icon="📡"
-          loading={isInitialLoad()}
-        />
-        <KpiCard
-          label="Today's Requests"
-          value={todayReqs()}
-          sub="today only"
-          icon="📅"
           loading={isInitialLoad()}
         />
         <KpiCard
@@ -410,10 +521,10 @@ const Analytics: Component = () => {
           loading={isInitialLoad()}
         />
         <KpiCard
-          label="Failed Requests"
-          value={failedReqs()}
+          label="Est. Cost"
+          value={`$${analyticsStore.filteredCost().toFixed(2)}`}
           sub={rangeSub()}
-          icon="⚠️"
+          icon="💰"
           loading={isInitialLoad()}
         />
       </div>
@@ -445,84 +556,66 @@ const Analytics: Component = () => {
         </GlassCard>
       </div>
 
-      {/* ── Charts Row 2: daily trend + provider breakdown ── */}
-      <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Daily trend — takes 2/3 width */}
-        <GlassCard class="lg:col-span-2">
-          <h3 class="font-section-header text-text mb-4">
-            {dailyChartTitle()}
-          </h3>
-          <Show
-            when={analyticsStore.reqByDay().length > 0}
-            fallback={
-              <div class="flex items-center justify-center h-52 text-text-muted font-body text-sm">
-                {analyticsStore.loading() ? "Loading…" : "No daily data available."}
-              </div>
-            }
-          >
-            <div class="relative h-52">
-              <Bar data={reqDayData()} options={barOptions} />
+      {/* ── Usage Trends: full-width row ── */}
+      <GlassCard>
+        <h3 class="font-section-header text-text mb-4">
+          {dailyChartTitle()}
+        </h3>
+        <Show
+          when={analyticsStore.costByDay().length > 0}
+          fallback={
+            <div class="flex items-center justify-center h-52 text-text-muted font-body text-sm">
+              {analyticsStore.loading() ? "Loading…" : "No daily data available."}
             </div>
-          </Show>
-        </GlassCard>
+          }
+        >
+          <div class="relative h-52">
+            <Line data={usageTrendsData()} options={dualAxisOptions} />
+          </div>
+        </Show>
+      </GlassCard>
 
-        {/* Provider breakdown — 1/3 width */}
+      {/* ── Cost by Model (merged list — top 5, $ rounded to 3 decimals) ── */}
+      <Show
+        when={analyticsStore.costByModel().length > 0}
+        fallback={
+          <GlassCard>
+            <h3 class="font-section-header text-text mb-4">Cost by Model</h3>
+            <div class="flex flex-col items-center justify-center h-40 gap-2">
+              <span class="text-3xl opacity-30">📊</span>
+              <p class="font-caption text-text-muted text-center text-xs">
+                <Show when={isInitialLoad()} fallback={
+                  <>
+                    No provider data yet.
+                    <br />
+                    Send requests through the proxy to see breakdown.
+                  </>
+                }>
+                  Loading…
+                </Show>
+              </p>
+            </div>
+          </GlassCard>
+        }
+      >
         <GlassCard>
-          <h3 class="font-section-header text-text mb-4">By Provider</h3>
-          <Show
-            when={providerDoughnutData()}
-            keyed
-            fallback={
-              <div class="flex flex-col items-center justify-center h-52 gap-2">
-                <span class="text-3xl opacity-30">📊</span>
-                <p class="font-caption text-text-muted text-center text-xs">
-                  <Show when={isInitialLoad()} fallback={
-                    <>
-                      No provider data yet.
-                      <br />
-                      Send requests through the proxy to see breakdown.
-                    </>
-                  }>
-                    Loading…
-                  </Show>
-                </p>
-              </div>
-            }
-          >
-            {(data) => (
-              <div class="relative h-52">
-                <Doughnut data={data} options={doughnutOptions} />
-              </div>
-            )}
-          </Show>
-        </GlassCard>
-      </div>
-
-      {/* ── Provider details table (only shown when data exists) ── */}
-      <Show when={analyticsStore.providerStats().length > 0}>
-        <GlassCard>
-          <h3 class="font-section-header text-text mb-4">Provider Details</h3>
+          <h3 class="font-section-header text-text mb-4">Cost by Model</h3>
           <div class="space-y-2">
-            <For each={analyticsStore.providerStats()}>
+            <For each={analyticsStore.costByModel()}>
               {(stat, i) => (
                 <div class="flex items-center gap-3 py-2 border-b border-white/[0.04] last:border-0">
-                  {/* color dot */}
                   <div
                     class="w-2.5 h-2.5 rounded-full flex-shrink-0"
                     style={{ background: PROVIDER_COLORS[i() % PROVIDER_COLORS.length] }}
                   />
                   <div class="flex-1 min-w-0">
-                    <p class="font-body text-text truncate capitalize">{stat.provider}</p>
-                    <p class="font-caption text-text-muted text-xs">
-                      {stat.models.length} model{stat.models.length !== 1 ? "s" : ""}
-                    </p>
+                    <p class="font-body text-text truncate">{stat.model}</p>
+                    <p class="font-caption text-text-muted text-xs capitalize">{stat.provider}</p>
                   </div>
                   <div class="text-right">
-                    <p class="font-body text-text tabular-nums">
-                      {stat.requests.toLocaleString()} req
-                    </p>
+                    <p class="font-body text-text tabular-nums">${stat.cost.toFixed(3)}</p>
                     <p class="font-caption text-text-muted tabular-nums text-xs">
-                      {formatTokens(stat.tokens)} tok
+                      {formatTokens(Math.round(stat.cost / (((lookupRate(stat.provider, stat.model).input + lookupRate(stat.provider, stat.model).output) / 2) / 1_000_000)))} tok
                     </p>
                   </div>
                 </div>

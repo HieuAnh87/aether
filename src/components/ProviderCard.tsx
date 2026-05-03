@@ -37,12 +37,16 @@ const ProviderCard: Component<ProviderCardProps> = (props) => {
     <GlassCard>
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
-          {/* Provider icon circle */}
+          {/* Provider logo */}
           <div
-            class="flex h-10 w-10 items-center justify-center rounded-lg text-lg font-bold text-white"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
             style={{ "background-color": meta().color }}
           >
-            {meta().icon}
+            <img
+              src={meta().logo}
+              alt={meta().name}
+              class="h-5 w-5 object-contain invert"
+            />
           </div>
           <div>
             <h3 class="font-section-header text-text">{meta().name}</h3>
