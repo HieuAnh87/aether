@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeCompat } from "./commandClient";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,7 +56,7 @@ const [wellKnown, setWellKnown] = createSignal<WellKnownProvider[]>([]);
 async function refresh(): Promise<void> {
   setLoading(true);
   try {
-    const list = await invoke<AgentProviderInfo[]>("get_agent_providers");
+    const list = await invokeCompat<AgentProviderInfo[]>("get_agent_providers");
     setProviders(list);
   } finally {
     setLoading(false);
@@ -64,12 +64,12 @@ async function refresh(): Promise<void> {
 }
 
 async function loadWellKnown(): Promise<void> {
-  const list = await invoke<WellKnownProvider[]>("get_well_known_providers");
+  const list = await invokeCompat<WellKnownProvider[]>("get_well_known_providers");
   setWellKnown(list);
 }
 
 async function addProvider(args: AddProviderArgs): Promise<void> {
-  await invoke("add_agent_provider", {
+  await invokeCompat<void>("add_agent_provider", {
     id: args.id,
     name: args.name,
     baseUrl: args.baseUrl,
@@ -82,7 +82,7 @@ async function addProvider(args: AddProviderArgs): Promise<void> {
 }
 
 async function updateProvider(args: UpdateProviderArgs): Promise<void> {
-  await invoke("update_agent_provider", {
+  await invokeCompat<void>("update_agent_provider", {
     id: args.id,
     name: args.name ?? null,
     baseUrl: args.baseUrl ?? null,
@@ -95,16 +95,16 @@ async function updateProvider(args: UpdateProviderArgs): Promise<void> {
 }
 
 async function deleteProvider(id: string): Promise<void> {
-  await invoke("delete_agent_provider", { id });
+  await invokeCompat<void>("delete_agent_provider", { id });
   await refresh();
 }
 
 async function fetchKey(id: string): Promise<string | null> {
-  return invoke<string | null>("get_agent_provider_key", { id });
+  return invokeCompat<string | null>("get_agent_provider_key", { id });
 }
 
 async function fetchModels(id: string): Promise<string[]> {
-  const models = await invoke<string[]>("fetch_provider_models", { id });
+  const models = await invokeCompat<string[]>("fetch_provider_models", { id });
   // Refresh local state to pick up cached model list
   await refresh();
   return models;
@@ -116,7 +116,7 @@ async function validateKey(
   apiKey: string,
   headers?: Record<string, string>,
 ): Promise<boolean> {
-  return invoke<boolean>("validate_agent_provider_key", {
+  return invokeCompat<boolean>("validate_agent_provider_key", {
     baseUrl,
     compatibility,
     apiKey,

@@ -1,8 +1,15 @@
 import { createSignal } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { invokeCompat } from "./commandClient";
 
-export type ProxyStatus = "running" | "stopped" | "starting" | "restarting" | "crashed";
+export type ProxyStatus = "running" | "stopped" | "starting" | "stopping" | "degraded" | "crashed";
+
+interface ProxyRuntimeLifecycleEvent {
+  state: ProxyStatus;
+  source: string;
+  details: Record<string, unknown>;
+  timestampMs: number;
+}
 
 interface ProxyStatusEvent {
   status: ProxyStatus;
@@ -18,10 +25,11 @@ const [loading, setLoading] = createSignal(false);
 
 // Initialize: fetch current status and listen for events
 let unlisten: (() => void) | null = null;
+let unlistenRuntime: (() => void) | null = null;
 
 async function init() {
   try {
-    const event = await invoke<ProxyStatusEvent>("get_proxy_status");
+    const event = await invokeCompat<ProxyStatusEvent>("get_proxy_status");
     setStatus(event.status);
     setPort(event.port);
     setError(event.error);
@@ -39,6 +47,24 @@ async function init() {
       setError(null);
     }
   });
+
+  // Listen to v2 runtime lifecycle stream and reflect state transitions.
+  unlistenRuntime = await listen<ProxyRuntimeLifecycleEvent>("proxy-runtime-lifecycle", (event) => {
+    const { state, details } = event.payload;
+    setStatus(state);
+
+    const maybePort = details?.port;
+    if (typeof maybePort === "number") {
+      setPort(maybePort);
+    }
+
+    const maybeError = details?.error;
+    if (typeof maybeError === "string" && maybeError.length > 0) {
+      setError(maybeError);
+    } else if (state === "running" || state === "stopped") {
+      setError(null);
+    }
+  });
 }
 
 // Call init immediately (module-level)
@@ -48,7 +74,7 @@ init();
 async function startProxy(customPort?: number) {
   setLoading(true);
   try {
-    await invoke("start_proxy", { port: customPort ?? port() });
+    await invokeCompat<void>("start_proxy", { port: customPort ?? port() });
   } catch (e) {
     setError(String(e));
     throw e;
@@ -60,7 +86,7 @@ async function startProxy(customPort?: number) {
 async function stopProxy() {
   setLoading(true);
   try {
-    await invoke("stop_proxy");
+    await invokeCompat<void>("stop_proxy");
   } catch (e) {
     setError(String(e));
     throw e;
@@ -72,7 +98,7 @@ async function stopProxy() {
 async function restartProxy(customPort?: number) {
   setLoading(true);
   try {
-    await invoke("restart_proxy", { port: customPort ?? port() });
+    await invokeCompat<void>("restart_proxy", { port: customPort ?? port() });
   } catch (e) {
     setError(String(e));
     throw e;
@@ -85,6 +111,10 @@ function cleanup() {
   if (unlisten) {
     unlisten();
     unlisten = null;
+  }
+  if (unlistenRuntime) {
+    unlistenRuntime();
+    unlistenRuntime = null;
   }
 }
 

@@ -1,6 +1,5 @@
 import type { Component } from "solid-js";
 import { createSignal, createResource, Show, Suspense } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import GlassCard from "../components/GlassCard";
@@ -8,6 +7,7 @@ import Button from "../components/Button";
 import { useToast } from "../components/Toast";
 import { proxyStore } from "../stores/proxyStore";
 import { themeStore } from "../stores/themeStore";
+import { invokeCompat } from "../stores/commandClient";
 
 const DEFAULT_PROXY_PORT = 8317;
 
@@ -26,11 +26,11 @@ interface VersionInfo {
 const Settings: Component = () => {
   const { toast } = useToast();
   const [settings, { refetch }] = createResource(async () => {
-    return await invoke<AppSettings>("get_settings");
+    return await invokeCompat<AppSettings>("get_settings");
   });
 
   const [versionInfo] = createResource(async () => {
-    return await invoke<VersionInfo>("get_version_info");
+    return await invokeCompat<VersionInfo>("get_version_info");
   });
 
   const [pendingPort, setPendingPort] = createSignal<number | null>(null);
@@ -42,7 +42,7 @@ const Settings: Component = () => {
     const updated = { ...current, [key]: value };
     setSaving(true);
     try {
-      await invoke("update_settings", { settingsData: updated });
+      await invokeCompat<void>("update_settings", { settingsData: updated });
       refetch();
       toast.success("Setting saved");
     } catch (e: any) {

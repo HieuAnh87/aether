@@ -3,39 +3,108 @@ pub mod agents;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::Manager;
 
 use crate::config::{self, AgentConfig, PresetInfo};
+use crate::core::application::services::command_transition::CommandTransitionService;
+use crate::core::domain::ports::{ProjectionWriteRequest, ProjectionWriter};
+use crate::core::infrastructure::adapters::AtomicProjectionWriter;
+use crate::core::infrastructure::persistence::SqlitePersistenceAdapter;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct V2CommandEnvelope<T> {
+    pub status: String,
+    pub data: Option<T>,
+    pub error: Option<String>,
+    pub code: Option<String>,
+    pub correlation_id: Option<String>,
+}
+
+impl<T> V2CommandEnvelope<T> {
+    pub fn ok(data: T) -> Self {
+        Self {
+            status: "ok".to_string(),
+            data: Some(data),
+            error: None,
+            code: None,
+            correlation_id: None,
+        }
+    }
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrationValidationReport {
+    pub session_id: String,
+    pub schema_version: i64,
+    pub expected_schema_version: i64,
+    pub schema_ok: bool,
+    pub backup_dir: String,
+    pub backup_files: usize,
+    pub retained_backup_sets: usize,
+    pub bootstrap_import_executed: bool,
+    pub projection_drift_detected: bool,
+    pub projection_conflict_type: Option<String>,
+    pub cutover_ready: bool,
+}
+
+fn command_transition_service() -> Result<CommandTransitionService, String> {
+    let persistence = SqlitePersistenceAdapter::default();
+    persistence.initialize().map_err(|e| e.to_string())?;
+    Ok(CommandTransitionService::new(persistence))
+}
 
 #[tauri::command]
 pub fn get_presets() -> Result<Vec<PresetInfo>, String> {
-    config::get_presets().map_err(|e| e.to_string())
+    command_transition_service()?
+        .get_presets()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn set_active_preset(name: String) -> Result<(), String> {
-    config::set_active_preset(&name).map_err(|e| e.to_string())
+pub fn set_active_preset(name: String) -> Result<V2CommandEnvelope<()>, String> {
+    command_transition_service()?
+        .set_active_preset(&name)
+        .map_err(|e| e.to_string())?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
-pub fn create_preset(name: String) -> Result<(), String> {
-    config::create_preset(&name).map_err(|e| e.to_string())
+pub fn create_preset(name: String) -> Result<V2CommandEnvelope<()>, String> {
+    command_transition_service()?
+        .create_preset(&name)
+        .map_err(|e| e.to_string())?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
-pub fn update_preset(name: String, agents: HashMap<String, AgentConfig>) -> Result<(), String> {
-    config::update_preset(&name, agents).map_err(|e| e.to_string())
+pub fn update_preset(
+    name: String,
+    agents: HashMap<String, AgentConfig>,
+) -> Result<V2CommandEnvelope<()>, String> {
+    command_transition_service()?
+        .update_preset(&name, agents)
+        .map_err(|e| e.to_string())?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
-pub fn delete_preset(name: String) -> Result<(), String> {
-    config::delete_preset(&name).map_err(|e| e.to_string())
+pub fn delete_preset(name: String) -> Result<V2CommandEnvelope<()>, String> {
+    command_transition_service()?
+        .delete_preset(&name)
+        .map_err(|e| e.to_string())?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
-pub fn duplicate_preset(name: String) -> Result<String, String> {
-    config::duplicate_preset(&name).map_err(|e| e.to_string())
+pub fn duplicate_preset(name: String) -> Result<V2CommandEnvelope<String>, String> {
+    let duplicated = command_transition_service()?
+        .duplicate_preset(&name)
+        .map_err(|e| e.to_string())?;
+    Ok(V2CommandEnvelope::ok(duplicated))
 }
 
 #[tauri::command]
@@ -56,9 +125,14 @@ pub fn get_model_variants() -> Result<HashMap<String, Vec<String>>, String> {
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn write_file(path: String, content: String) -> Result<(), String> {
-    std::fs::write(PathBuf::from(&path), content)
-        .map_err(|e| format!("Failed to write file: {}", e))
+pub fn write_file(path: String, content: String) -> Result<V2CommandEnvelope<()>, String> {
+    AtomicProjectionWriter
+        .write_projection(ProjectionWriteRequest {
+            target: path,
+            content,
+        })
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
@@ -77,6 +151,7 @@ pub fn backup_slim_config() -> Result<(), String> {
 // ---------------------------------------------------------------------------
 
 use std::sync::Mutex;
+use crate::core::application::services::proxy_runtime::ProxyRuntimeService;
 use crate::proxy::{ProxyState, ProxyStatusEvent};
 use crate::proxy::events;
 
@@ -85,7 +160,7 @@ pub async fn start_proxy(
     app: tauri::AppHandle,
     state: tauri::State<'_, Mutex<ProxyState>>,
     port: Option<u16>,
-) -> Result<(), String> {
+) -> Result<V2CommandEnvelope<()>, String> {
     let port = port.unwrap_or(8317);
     if port < 1024 {
         return Err(format!(
@@ -93,19 +168,31 @@ pub async fn start_proxy(
             port
         ));
     }
-    crate::proxy::start_proxy(&app, &state, port)
+    let persistence = SqlitePersistenceAdapter::default();
+    persistence.initialize().map_err(|e| e.to_string())?;
+    let service = ProxyRuntimeService::new(persistence);
+
+    service
+        .start(&app, &state, port)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
 pub async fn stop_proxy(
     app: tauri::AppHandle,
     state: tauri::State<'_, Mutex<ProxyState>>,
-) -> Result<(), String> {
-    crate::proxy::stop_proxy(&app, &state)
+) -> Result<V2CommandEnvelope<()>, String> {
+    let persistence = SqlitePersistenceAdapter::default();
+    persistence.initialize().map_err(|e| e.to_string())?;
+    let service = ProxyRuntimeService::new(persistence);
+
+    service
+        .stop(&app, &state)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
@@ -113,7 +200,7 @@ pub async fn restart_proxy(
     app: tauri::AppHandle,
     state: tauri::State<'_, Mutex<ProxyState>>,
     port: Option<u16>,
-) -> Result<(), String> {
+) -> Result<V2CommandEnvelope<()>, String> {
     let port = port.unwrap_or(8317);
     if port < 1024 {
         return Err(format!(
@@ -121,9 +208,15 @@ pub async fn restart_proxy(
             port
         ));
     }
-    crate::proxy::restart_proxy(&app, &state, port)
+    let persistence = SqlitePersistenceAdapter::default();
+    persistence.initialize().map_err(|e| e.to_string())?;
+    let service = ProxyRuntimeService::new(persistence);
+
+    service
+        .restart(&app, &state, port)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
@@ -137,10 +230,8 @@ pub fn get_proxy_status(
 // Provider account commands
 // ---------------------------------------------------------------------------
 
-use crate::keychain;
-
 /// The providers we support
-const SUPPORTED_PROVIDERS: &[&str] = &["anthropic", "openai", "google", "vertexai"];
+pub(crate) const SUPPORTED_PROVIDERS: &[&str] = &["anthropic", "openai", "google", "vertexai"];
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -153,20 +244,7 @@ pub struct ProviderAccountInfo {
 
 #[tauri::command]
 pub fn get_provider_accounts(app: tauri::AppHandle) -> Result<Vec<ProviderAccountInfo>, String> {
-    let mut accounts = Vec::new();
-    for &provider in SUPPORTED_PROVIDERS {
-        // Single keychain read per provider instead of has_api_key + get_api_key (2 reads)
-        let key = keychain::get_api_key(&app, provider)?;
-        let has_key = key.is_some();
-        let masked_key = key.map(|k| keychain::mask_key(&k));
-        accounts.push(ProviderAccountInfo {
-            provider: provider.to_string(),
-            has_key,
-            masked_key,
-            status: if has_key { "unverified".to_string() } else { "none".to_string() },
-        });
-    }
-    Ok(accounts)
+    command_transition_service()?.get_provider_accounts(&app)
 }
 
 #[tauri::command]
@@ -174,11 +252,9 @@ pub fn add_provider_account(
     app: tauri::AppHandle,
     provider: String,
     key: String,
-) -> Result<(), String> {
-    if !SUPPORTED_PROVIDERS.contains(&provider.as_str()) {
-        return Err(format!("Unsupported provider: {}", provider));
-    }
-    keychain::store_api_key(&app, &provider, &key)
+) -> Result<V2CommandEnvelope<()>, String> {
+    command_transition_service()?.add_provider_account(&app, &provider, &key)?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
@@ -186,16 +262,18 @@ pub fn update_api_key(
     app: tauri::AppHandle,
     provider: String,
     key: String,
-) -> Result<(), String> {
-    keychain::store_api_key(&app, &provider, &key)
+) -> Result<V2CommandEnvelope<()>, String> {
+    command_transition_service()?.update_api_key(&app, &provider, &key)?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
 pub fn delete_provider_account(
     app: tauri::AppHandle,
     provider: String,
-) -> Result<(), String> {
-    keychain::delete_api_key(&app, &provider)
+) -> Result<V2CommandEnvelope<()>, String> {
+    command_transition_service()?.delete_provider_account(&app, &provider)?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
@@ -286,8 +364,60 @@ pub fn get_settings() -> Result<AppSettings, String> {
 }
 
 #[tauri::command]
-pub fn update_settings(settings_data: AppSettings) -> Result<(), String> {
-    settings::write_settings(&settings_data).map_err(|e| e.to_string())
+pub fn update_settings(settings_data: AppSettings) -> Result<V2CommandEnvelope<()>, String> {
+    settings::write_settings(&settings_data).map_err(|e| e.to_string())?;
+    Ok(V2CommandEnvelope::ok(()))
+}
+
+/// Run one-time migration/cutover validation gates for v2-only runtime mode.
+///
+/// This command is intentionally idempotent and safe to run repeatedly.
+#[tauri::command]
+pub fn run_migration_validation_gates() -> Result<V2CommandEnvelope<MigrationValidationReport>, String> {
+    let persistence = SqlitePersistenceAdapter::default();
+    persistence.initialize().map_err(|e| e.to_string())?;
+
+    let schema_version = persistence
+        .get_latest_schema_version()
+        .map_err(|e| e.to_string())?;
+    let expected_schema_version = 1_i64;
+    let schema_ok = schema_version == expected_schema_version;
+
+    let session_id = format!(
+        "cutover-gate-{}",
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0)
+    );
+
+    let backup = persistence
+        .create_migration_session_backup(&session_id)
+        .map_err(|e| e.to_string())?;
+
+    let bootstrap_import_executed = persistence
+        .bootstrap_from_legacy_files_if_needed()
+        .map_err(|e| e.to_string())?;
+
+    let drift = persistence
+        .detect_slim_projection_drift()
+        .map_err(|e| e.to_string())?;
+
+    let report = MigrationValidationReport {
+        session_id,
+        schema_version,
+        expected_schema_version,
+        schema_ok,
+        backup_dir: backup.backup_dir,
+        backup_files: backup.files_backed_up,
+        retained_backup_sets: backup.retained_sets,
+        bootstrap_import_executed,
+        projection_drift_detected: drift.has_drift,
+        projection_conflict_type: drift.conflict_type,
+        cutover_ready: schema_ok,
+    };
+
+    Ok(V2CommandEnvelope::ok(report))
 }
 
 // ---------------------------------------------------------------------------
@@ -563,7 +693,7 @@ pub fn read_usage_cache() -> Result<Option<UsageResponse>, String> {
 
 /// Persist a UsageResponse to disk so analytics work offline.
 #[tauri::command]
-pub fn write_usage_cache(data: UsageResponse) -> Result<(), String> {
+pub fn write_usage_cache(data: UsageResponse) -> Result<V2CommandEnvelope<()>, String> {
     let path = usage_cache_path()?;
     // Ensure the parent directory exists
     if let Some(parent) = path.parent() {
@@ -578,12 +708,17 @@ pub fn write_usage_cache(data: UsageResponse) -> Result<(), String> {
     let content = serde_json::to_string(&latest)
         .map_err(|e| format!("Failed to serialize usage cache: {}", e))?;
 
-    // Atomic write: temp file + rename avoids partial writes/corruption.
+    // Atomic write: write temp via projection writer + rename.
     let tmp_path = path.with_extension("json.tmp");
-    std::fs::write(&tmp_path, content)
+    AtomicProjectionWriter
+        .write_projection(ProjectionWriteRequest {
+            target: tmp_path.to_string_lossy().to_string(),
+            content,
+        })
         .map_err(|e| format!("Failed to write usage cache temp file: {}", e))?;
     std::fs::rename(&tmp_path, &path)
-        .map_err(|e| format!("Failed to replace usage cache atomically: {}", e))
+        .map_err(|e| format!("Failed to replace usage cache atomically: {}", e))?;
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 // ---------------------------------------------------------------------------
@@ -594,10 +729,10 @@ pub fn write_usage_cache(data: UsageResponse) -> Result<(), String> {
 pub fn start_event_stream(
     app: tauri::AppHandle,
     port: Option<u16>,
-) -> Result<(), String> {
+) -> Result<V2CommandEnvelope<()>, String> {
     let port = port.unwrap_or(8317);
     // Start the WebSocket event stream. Abort sender is stored internally in
     // events::STREAM_ABORT — calling again cancels the previous stream.
     events::start_event_stream(app, port);
-    Ok(())
+    Ok(V2CommandEnvelope::ok(()))
 }

@@ -6,11 +6,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 
 use crate::config::settings;
+use crate::core::domain::ports::{ProjectionWriteRequest, ProjectionWriter};
+use crate::core::infrastructure::adapters::AtomicProjectionWriter;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -22,7 +24,8 @@ pub enum ProxyStatus {
     Running,
     Stopped,
     Starting,
-    Restarting,
+    Degraded,
+    Stopping,
     Crashed,
 }
 
@@ -53,6 +56,65 @@ impl Default for ProxyState {
             stopping_flag: Arc::new(AtomicBool::new(false)),
         }
     }
+}
+
+fn can_transition(from: &ProxyStatus, to: &ProxyStatus) -> bool {
+    use ProxyStatus::*;
+    match (from, to) {
+        // No-op
+        (a, b) if a == b => true,
+
+        // Normal lifecycle
+        (Stopped, Starting) => true,
+        (Starting, Running) => true,
+        (Starting, Crashed) => true,
+        (Starting, Stopped) => true,
+
+        (Running, Degraded) => true,
+        (Running, Stopping) => true,
+        (Running, Crashed) => true,
+
+        (Degraded, Running) => true,
+        (Degraded, Stopping) => true,
+        (Degraded, Crashed) => true,
+
+        (Stopping, Stopped) => true,
+        (Stopping, Crashed) => true,
+
+        // Recovery / restart flows
+        (Crashed, Starting) => true,
+        (Stopped, Crashed) => true,
+
+        _ => false,
+    }
+}
+
+fn set_status_locked(
+    app_handle: &AppHandle,
+    state: &mut ProxyState,
+    next: ProxyStatus,
+    error: Option<String>,
+) {
+    let current = state.status.clone();
+    if !can_transition(&current, &next) {
+        log::warn!(
+            "Invalid proxy status transition: {:?} -> {:?}; keeping {:?}",
+            current,
+            next,
+            current
+        );
+        return;
+    }
+
+    state.status = next.clone();
+    emit_status(
+        app_handle,
+        ProxyStatusEvent {
+            status: next,
+            port: state.port,
+            error,
+        },
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -113,7 +175,10 @@ remote-management:
         port, auth_dir_str, management_key
     );
 
-    std::fs::write(&config_path, yaml)?;
+    AtomicProjectionWriter.write_projection(ProjectionWriteRequest {
+        target: config_path.to_string_lossy().to_string(),
+        content: yaml,
+    })?;
     log::info!("Generated proxy config at {:?}", config_path);
 
     Ok(config_path)
@@ -138,9 +203,7 @@ pub async fn start_proxy(
             anyhow::bail!("Proxy is already running on port {}", s.port);
         }
         s.port = port;
-        s.status = ProxyStatus::Starting;
-        let ev = snapshot(&s);
-        emit_status(app_handle, ev);
+        set_status_locked(app_handle, &mut s, ProxyStatus::Starting, None);
     }
 
     // Helper: reset to Stopped on any error after we've already emitted Starting.
@@ -148,7 +211,7 @@ pub async fn start_proxy(
     let reset_on_err = |app: &AppHandle, state: &Mutex<ProxyState>, port: u16, msg: String| {
         let abort_tx = {
             let mut s = state.lock().unwrap();
-            s.status = ProxyStatus::Stopped;
+            set_status_locked(app, &mut s, ProxyStatus::Stopped, Some(msg.clone()));
             s.child = None;
             s.health_task_abort.take()
         };
@@ -156,11 +219,7 @@ pub async fn start_proxy(
         if let Some(tx) = abort_tx {
             let _ = tx.send(());
         }
-        emit_status(app, ProxyStatusEvent {
-            status: ProxyStatus::Stopped,
-            port,
-            error: Some(msg),
-        });
+        let _ = port;
     };
 
     // --- generate proxy config ---
@@ -245,7 +304,15 @@ pub async fn start_proxy(
                             // Signal crashed status — we can't update the Mutex here
                             // because we don't own the reference. We emit an event so
                             // the frontend (and any future health-check) can react.
-                            if let Err(e) = app_exit.emit(
+                            if let Some(proxy_state) = app_exit.try_state::<Mutex<ProxyState>>() {
+                                let mut s = proxy_state.lock().unwrap();
+                                set_status_locked(
+                                    &app_exit,
+                                    &mut s,
+                                    ProxyStatus::Crashed,
+                                    Some(format!("Process terminated with code {:?}", code)),
+                                );
+                            } else if let Err(e) = app_exit.emit(
                                 "proxy-status-changed",
                                 ProxyStatusEvent {
                                     status: ProxyStatus::Crashed,
@@ -328,7 +395,10 @@ async fn health_check_loop(
                 if healthy && !first_success {
                     first_success = true;
                     log::info!("CLIProxyAPI on port {} is healthy — status → Running", port);
-                    if let Err(e) = app_handle.emit(
+                    if let Some(proxy_state) = app_handle.try_state::<Mutex<ProxyState>>() {
+                        let mut s = proxy_state.lock().unwrap();
+                        set_status_locked(&app_handle, &mut s, ProxyStatus::Running, None);
+                    } else if let Err(e) = app_handle.emit(
                         "proxy-status-changed",
                         ProxyStatusEvent {
                             status: ProxyStatus::Running,
@@ -347,11 +417,19 @@ async fn health_check_loop(
                         // status transition; just exit cleanly.
                         log::debug!("Health check detected unreachable proxy during intentional stop (port {})", port);
                     } else {
-                        log::warn!("CLIProxyAPI health check failed on port {} — emitting Crashed", port);
-                        if let Err(e) = app_handle.emit(
+                        log::warn!("CLIProxyAPI health check failed on port {} — status → Degraded", port);
+                        if let Some(proxy_state) = app_handle.try_state::<Mutex<ProxyState>>() {
+                            let mut s = proxy_state.lock().unwrap();
+                            set_status_locked(
+                                &app_handle,
+                                &mut s,
+                                ProxyStatus::Degraded,
+                                Some(format!("Proxy on port {} became unreachable", port)),
+                            );
+                        } else if let Err(e) = app_handle.emit(
                             "proxy-status-changed",
                             ProxyStatusEvent {
-                                status: ProxyStatus::Crashed,
+                                status: ProxyStatus::Degraded,
                                 port,
                                 error: Some(format!(
                                     "Proxy on port {} became unreachable",
@@ -359,7 +437,7 @@ async fn health_check_loop(
                                 )),
                             },
                         ) {
-                            log::warn!("Failed to emit crashed event: {}", e);
+                            log::warn!("Failed to emit degraded event: {}", e);
                         }
                     }
                     // Either way, exit the health loop — the proxy is gone.
@@ -380,6 +458,31 @@ async fn health_check_loop(
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proxy_state_machine_allows_expected_recovery_transitions() {
+        assert!(can_transition(&ProxyStatus::Stopped, &ProxyStatus::Starting));
+        assert!(can_transition(&ProxyStatus::Starting, &ProxyStatus::Running));
+        assert!(can_transition(&ProxyStatus::Running, &ProxyStatus::Degraded));
+        assert!(can_transition(&ProxyStatus::Degraded, &ProxyStatus::Running));
+        assert!(can_transition(&ProxyStatus::Running, &ProxyStatus::Stopping));
+        assert!(can_transition(&ProxyStatus::Stopping, &ProxyStatus::Stopped));
+        assert!(can_transition(&ProxyStatus::Running, &ProxyStatus::Crashed));
+        assert!(can_transition(&ProxyStatus::Crashed, &ProxyStatus::Starting));
+    }
+
+    #[test]
+    fn proxy_state_machine_rejects_invalid_shortcuts() {
+        assert!(!can_transition(&ProxyStatus::Stopped, &ProxyStatus::Running));
+        assert!(!can_transition(&ProxyStatus::Stopped, &ProxyStatus::Degraded));
+        assert!(!can_transition(&ProxyStatus::Crashed, &ProxyStatus::Running));
+        assert!(!can_transition(&ProxyStatus::Stopping, &ProxyStatus::Running));
+    }
+}
+
 /// Stop the running proxy process.
 pub async fn stop_proxy(
     app_handle: &AppHandle,
@@ -387,6 +490,12 @@ pub async fn stop_proxy(
 ) -> anyhow::Result<()> {
     let (child, port) = {
         let mut s = state.lock().unwrap();
+
+        if s.status == ProxyStatus::Stopped {
+            return Ok(());
+        }
+
+        set_status_locked(app_handle, &mut s, ProxyStatus::Stopping, None);
 
         // Abort health-check task.
         if let Some(tx) = s.health_task_abort.take() {
@@ -398,7 +507,7 @@ pub async fn stop_proxy(
 
         let port = s.port;
         let child = s.child.take();
-        s.status = ProxyStatus::Stopped;
+        set_status_locked(app_handle, &mut s, ProxyStatus::Stopped, None);
 
         (child, port)
     };
@@ -409,14 +518,7 @@ pub async fn stop_proxy(
         }
     }
 
-    emit_status(
-        app_handle,
-        ProxyStatusEvent {
-            status: ProxyStatus::Stopped,
-            port,
-            error: None,
-        },
-    );
+    let _ = port;
 
     Ok(())
 }
@@ -427,14 +529,6 @@ pub async fn restart_proxy(
     state: &Mutex<ProxyState>,
     port: u16,
 ) -> anyhow::Result<()> {
-    // Announce restart.
-    {
-        let mut s = state.lock().unwrap();
-        s.status = ProxyStatus::Restarting;
-        let ev = snapshot(&s);
-        emit_status(app_handle, ev);
-    }
-
     stop_proxy(app_handle, state).await?;
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     start_proxy(app_handle, state, port).await?;

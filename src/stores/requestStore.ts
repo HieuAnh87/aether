@@ -1,6 +1,6 @@
 import { createSignal, createMemo } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { invokeCompat } from "./commandClient";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -138,7 +138,7 @@ function clearRequests() {
 
 async function startStream() {
   try {
-    await invoke("start_event_stream");
+    await invokeCompat<void>("start_event_stream");
   } catch (e) {
     setStreamConnected(false);
     setStreamError(String(e));

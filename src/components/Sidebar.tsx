@@ -3,7 +3,7 @@ import { Show } from "solid-js";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface SidebarProps {
-  proxyStatus?: "running" | "stopped" | "starting" | "restarting" | "crashed";
+  proxyStatus?: "running" | "stopped" | "starting" | "stopping" | "degraded" | "crashed";
   proxyPort?: number;
   children: JSX.Element;
 }
@@ -24,8 +24,10 @@ const Sidebar = (props: SidebarProps) => {
       case "running":
         return <span class="inline-block h-2 w-2 rounded-full bg-success flex-shrink-0" />;
       case "starting":
-      case "restarting":
+      case "stopping":
         return <span class="inline-block h-2 w-2 rounded-full bg-warning animate-pulse flex-shrink-0" />;
+      case "degraded":
+        return <span class="inline-block h-2 w-2 rounded-full bg-warning flex-shrink-0" />;
       case "stopped":
         return <span class="inline-block h-2 w-2 rounded-full bg-error flex-shrink-0" />;
       case "crashed":
@@ -41,8 +43,10 @@ const Sidebar = (props: SidebarProps) => {
         return <span class="font-mono text-text-secondary">localhost:{props.proxyPort ?? 8317}</span>;
       case "starting":
         return <span class="text-warning">Starting...</span>;
-      case "restarting":
-        return <span class="text-warning">Restarting...</span>;
+      case "stopping":
+        return <span class="text-warning">Stopping...</span>;
+      case "degraded":
+        return <span class="text-warning">Degraded</span>;
       case "stopped":
         return <span class="text-text-secondary">Proxy stopped</span>;
       case "crashed":

@@ -123,7 +123,7 @@ const Popup: Component = () => {
 
   const isStopped = () => proxyStatus() === "stopped" || proxyStatus() === "crashed";
   const isStarting = () =>
-    proxyStatus() === "starting" || proxyStatus() === "restarting";
+    proxyStatus() === "starting" || proxyStatus() === "stopping";
 
   async function handleActivatePreset(name: string) {
     if (switchingPreset() !== null) return;
@@ -164,7 +164,8 @@ const Popup: Component = () => {
       case "running":
         return "bg-success";
       case "starting":
-      case "restarting":
+      case "stopping":
+      case "degraded":
         return "bg-warning";
       default:
         return "bg-error";
@@ -177,8 +178,10 @@ const Popup: Component = () => {
         return "Running";
       case "starting":
         return "Starting";
-      case "restarting":
-        return "Restarting";
+      case "stopping":
+        return "Stopping";
+      case "degraded":
+        return "Degraded";
       case "crashed":
         return "Crashed";
       default:

@@ -1,7 +1,6 @@
 import { createSignal, Show, For, Suspense } from "solid-js";
 import type { Component } from "solid-js";
 import { save, open } from "@tauri-apps/plugin-dialog";
-import { invoke } from "@tauri-apps/api/core";
 import {
   Button,
   PresetCard,
@@ -15,6 +14,7 @@ import {
   presetStore,
 } from "../stores/presetStore";
 import type { AgentConfig } from "../stores/presetStore";
+import { invokeCompat } from "../stores/commandClient";
 
 const Presets: Component = () => {
   const { toast } = useToast();
@@ -100,7 +100,7 @@ const Presets: Component = () => {
         filters: [{ name: "JSON", extensions: ["json"] }],
       });
       if (!filePath) return; // user cancelled
-      await invoke("write_file", { path: filePath, content: json });
+      await invokeCompat<void>("write_file", { path: filePath, content: json });
       toast.success("Presets exported successfully");
     } catch (e) {
       toast.error(`Export failed: ${e}`);
@@ -115,12 +115,12 @@ const Presets: Component = () => {
       });
       if (!filePath) return; // user cancelled
 
-      const json = await invoke<string>("read_file", {
+      const json = await invokeCompat<string>("read_file", {
         path: filePath,
       });
 
       // Backup current config before import
-      await invoke("backup_slim_config");
+      await invokeCompat<void>("backup_slim_config");
 
       const result = await presetStore.importPresets(json);
 

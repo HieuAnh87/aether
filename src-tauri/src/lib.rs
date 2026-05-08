@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod core;
 mod keychain;
 mod proxy;
 mod secrets;
@@ -88,6 +89,7 @@ pub fn run() {
             commands::get_version_info,
             commands::get_settings,
             commands::update_settings,
+            commands::run_migration_validation_gates,
             commands::show_main_window,
             commands::fetch_usage_stats,
             commands::read_usage_cache,
@@ -167,7 +169,18 @@ pub fn run() {
                 let auto_start = check_auto_start_setting();
                 if auto_start {
                     let state = handle2.state::<std::sync::Mutex<ProxyState>>();
-                    if let Err(e) = proxy::start_proxy(&handle2, &state, 8317).await {
+                    let persistence = crate::core::infrastructure::persistence::SqlitePersistenceAdapter::default();
+                    if let Err(e) = persistence.initialize() {
+                        log::warn!("Auto-start proxy skipped: failed initializing v2 persistence: {}", e);
+                        return;
+                    }
+
+                    let runtime_service =
+                        crate::core::application::services::proxy_runtime::ProxyRuntimeService::new(
+                            persistence,
+                        );
+
+                    if let Err(e) = runtime_service.start(&handle2, &state, 8317).await {
                         log::warn!("Auto-start proxy failed: {}", e);
                     }
                 }

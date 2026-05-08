@@ -15,6 +15,7 @@ use std::path::PathBuf;
 
 use aes_gcm::aead::{Aead, AeadCore, KeyInit, OsRng};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
+use tempfile::NamedTempFile;
 
 // ---------------------------------------------------------------------------
 // Internal helpers
@@ -103,17 +104,29 @@ fn load_map(cipher: &Aes256Gcm, path: &PathBuf) -> HashMap<String, String> {
 fn save_map(cipher: &Aes256Gcm, path: &PathBuf, map: &HashMap<String, String>) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create config dir: {}", e))?;
+
+        let json = serde_json::to_vec(map).map_err(|e| format!("Failed to serialize secrets: {}", e))?;
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let ciphertext = cipher
+            .encrypt(&nonce, json.as_slice())
+            .map_err(|e| format!("Failed to encrypt secrets: {}", e))?;
+
+        let mut file_bytes = nonce.to_vec();
+        file_bytes.extend_from_slice(&ciphertext);
+
+        let mut tmp = NamedTempFile::new_in(parent)
+            .map_err(|e| format!("Failed to create temp secrets file: {}", e))?;
+        use std::io::Write;
+        tmp.write_all(&file_bytes)
+            .map_err(|e| format!("Failed to write temp secrets file: {}", e))?;
+        tmp.flush()
+            .map_err(|e| format!("Failed to flush temp secrets file: {}", e))?;
+        tmp.persist(path)
+            .map_err(|e| format!("Failed to write secrets.enc: {}", e.error))?;
+        return Ok(());
     }
 
-    let json = serde_json::to_vec(map).map_err(|e| format!("Failed to serialize secrets: {}", e))?;
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    let ciphertext = cipher
-        .encrypt(&nonce, json.as_slice())
-        .map_err(|e| format!("Failed to encrypt secrets: {}", e))?;
-
-    let mut file_bytes = nonce.to_vec();
-    file_bytes.extend_from_slice(&ciphertext);
-    std::fs::write(path, &file_bytes).map_err(|e| format!("Failed to write secrets.enc: {}", e))
+    Err("Failed to determine parent directory for secrets.enc".to_string())
 }
 
 fn make_cipher() -> Aes256Gcm {

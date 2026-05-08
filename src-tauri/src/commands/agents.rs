@@ -4,6 +4,9 @@
 //! and configures them to route through the Aether proxy.
 
 use crate::config::settings;
+use crate::commands::V2CommandEnvelope;
+use crate::core::domain::ports::{ProjectionWriteRequest, ProjectionWriter};
+use crate::core::infrastructure::adapters::AtomicProjectionWriter;
 
 /// Status of a single CLI agent / coding tool.
 #[derive(serde::Serialize, Clone)]
@@ -178,7 +181,7 @@ pub async fn configure_cli_agent(
     sonnet_model: Option<String>,
     haiku_model: Option<String>,
     small_fast_model: Option<String>,
-) -> Result<serde_json::Value, String> {
+) -> Result<V2CommandEnvelope<serde_json::Value>, String> {
     let resolved_port = port.unwrap_or_else(|| {
         settings::read_settings()
             .map(|s| s.proxy_port)
@@ -188,7 +191,7 @@ pub async fn configure_cli_agent(
     let endpoint = format!("http://127.0.0.1:{}", resolved_port);
     let home = dirs::home_dir().ok_or("Could not find home directory")?;
 
-    match agent_id.as_str() {
+    let data = match agent_id.as_str() {
         "claude-code" => configure_claude_code(
             &home,
             &endpoint,
@@ -204,7 +207,9 @@ pub async fn configure_cli_agent(
         "opencode" => configure_opencode(&home, resolved_port, &endpoint, model),
         "kiro" => configure_kiro(&endpoint),
         _ => Err(format!("Unknown agent: {}", agent_id)),
-    }
+    }?;
+
+    Ok(V2CommandEnvelope::ok(data))
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +249,12 @@ fn configure_claude_code(
     }
 
     let config_str = serde_json::to_string_pretty(&final_config).map_err(|e| e.to_string())?;
-    std::fs::write(&config_path, &config_str).map_err(|e| e.to_string())?;
+    AtomicProjectionWriter
+        .write_projection(ProjectionWriteRequest {
+            target: config_path.to_string_lossy().to_string(),
+            content: config_str,
+        })
+        .map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({
         "success": true,
@@ -282,7 +292,12 @@ fn configure_codex(
     let selected_effort = effort.unwrap_or_else(|| "high".to_string());
     let merged = merge_codex_toml(&existing, &aether_url, &selected_model, &selected_effort);
 
-    std::fs::write(&config_path, &merged).map_err(|e| e.to_string())?;
+    AtomicProjectionWriter
+        .write_projection(ProjectionWriteRequest {
+            target: config_path.to_string_lossy().to_string(),
+            content: merged,
+        })
+        .map_err(|e| e.to_string())?;
 
     // Merge auth.json — only set OPENAI_API_KEY if not already present.
     let auth_path = codex_dir.join("auth.json");
@@ -307,7 +322,12 @@ fn configure_codex(
     }
     let auth_content =
         serde_json::to_string_pretty(&auth_obj).map_err(|e| e.to_string())?;
-    std::fs::write(&auth_path, &auth_content).map_err(|e| e.to_string())?;
+    AtomicProjectionWriter
+        .write_projection(ProjectionWriteRequest {
+            target: auth_path.to_string_lossy().to_string(),
+            content: auth_content,
+        })
+        .map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({
         "success": true,
@@ -435,7 +455,12 @@ fn configure_amp_cli(
     };
 
     let settings_str = serde_json::to_string_pretty(&final_config).map_err(|e| e.to_string())?;
-    std::fs::write(&config_path, &settings_str).map_err(|e| e.to_string())?;
+    AtomicProjectionWriter
+        .write_projection(ProjectionWriteRequest {
+            target: config_path.to_string_lossy().to_string(),
+            content: settings_str,
+        })
+        .map_err(|e| e.to_string())?;
 
     Ok(serde_json::json!({
         "success": true,
@@ -587,7 +612,12 @@ fn configure_opencode(
     }
 
     let config_str = serde_json::to_string_pretty(&final_config).map_err(|e| e.to_string())?;
-    std::fs::write(&config_path, &config_str).map_err(|e| e.to_string())?;
+    AtomicProjectionWriter
+        .write_projection(ProjectionWriteRequest {
+            target: config_path.to_string_lossy().to_string(),
+            content: config_str,
+        })
+        .map_err(|e| e.to_string())?;
 
     let model_hint = model
         .as_deref()

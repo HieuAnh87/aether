@@ -1,5 +1,5 @@
 import { createSignal, createResource } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeCompat } from "./commandClient";
 
 // ---------------------------------------------------------------------------
 // Types (mirrors Rust backend)
@@ -40,7 +40,7 @@ const [presetsVersion, setPresetsVersion] = createSignal(0);
 // Presets resource — refetches when version increments
 const [presets] = createResource(presetsVersion, async () => {
   try {
-    return await invoke<PresetInfo[]>("get_presets");
+    return await invokeCompat<PresetInfo[]>("get_presets");
   } catch (e) {
     console.error("[presetStore] Failed to load presets:", e);
     return [];
@@ -50,7 +50,7 @@ const [presets] = createResource(presetsVersion, async () => {
 // Available models from opencode.json
 const [availableModels] = createResource(async () => {
   try {
-    return await invoke<string[]>("get_available_models");
+    return await invokeCompat<string[]>("get_available_models");
   } catch (e) {
     console.error("[presetStore] Failed to load available models:", e);
     return [];
@@ -59,7 +59,7 @@ const [availableModels] = createResource(async () => {
 
 const [modelVariants] = createResource(async () => {
   try {
-    return await invoke<Record<string, string[]>>("get_model_variants");
+    return await invokeCompat<Record<string, string[]>>("get_model_variants");
   } catch (e) {
     console.error("[presetStore] Failed to load model variants:", e);
     return {};
@@ -85,7 +85,7 @@ function refresh() {
 async function activatePreset(name: string): Promise<void> {
   setOperationLoading(true);
   try {
-    await invoke("set_active_preset", { name });
+    await invokeCompat<void>("set_active_preset", { name });
     refresh();
   } finally {
     setOperationLoading(false);
@@ -96,7 +96,7 @@ async function activatePreset(name: string): Promise<void> {
 async function createPreset(name: string): Promise<void> {
   setOperationLoading(true);
   try {
-    await invoke("create_preset", { name });
+    await invokeCompat<void>("create_preset", { name });
     refresh();
   } finally {
     setOperationLoading(false);
@@ -110,7 +110,7 @@ async function updatePreset(
 ): Promise<void> {
   setOperationLoading(true);
   try {
-    await invoke("update_preset", { name, agents });
+    await invokeCompat<void>("update_preset", { name, agents });
     refresh();
   } finally {
     setOperationLoading(false);
@@ -121,7 +121,7 @@ async function updatePreset(
 async function deletePreset(name: string): Promise<void> {
   setOperationLoading(true);
   try {
-    await invoke("delete_preset", { name });
+    await invokeCompat<void>("delete_preset", { name });
     // If we were editing the deleted preset, clear editing state
     if (editingPreset() === name) {
       setEditingPreset(null);
@@ -136,7 +136,7 @@ async function deletePreset(name: string): Promise<void> {
 async function duplicatePreset(name: string): Promise<string> {
   setOperationLoading(true);
   try {
-    const newName = await invoke<string>("duplicate_preset", { name });
+    const newName = await invokeCompat<string>("duplicate_preset", { name });
     refresh();
     return newName;
   } finally {
@@ -186,12 +186,12 @@ async function importPresets(
     try {
       if (existingNames.has(name)) {
         // Update existing
-        await invoke("update_preset", { name, agents });
+        await invokeCompat<void>("update_preset", { name, agents });
         result.added.push(`${name} (updated)`);
       } else {
         // Create then update with agents
-        await invoke("create_preset", { name });
-        await invoke("update_preset", { name, agents });
+        await invokeCompat<void>("create_preset", { name });
+        await invokeCompat<void>("update_preset", { name, agents });
         result.added.push(name);
       }
     } catch (e) {

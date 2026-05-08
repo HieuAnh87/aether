@@ -1,5 +1,5 @@
 import { createSignal, createMemo } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeCompat } from "./commandClient";
 
 /** $0.50 per million tokens — flat rate for cost calculation */
 const COST_RATE = 0.50 / 1_000_000; // = 0.0000005
@@ -656,7 +656,7 @@ async function saveToDiskCache(data: UsageResponse): Promise<void> {
 
   // Also persist to disk via Tauri for cross-session durability
   try {
-    await invoke("write_usage_cache", { data });
+    await invokeCompat<void>("write_usage_cache", { data });
   } catch (error) {
     // Non-critical (but keep observable for debugging)
     console.warn("[analytics] failed to write disk usage cache", error);
@@ -701,7 +701,7 @@ async function loadFromDiskCache(): Promise<boolean> {
 
   // 2. Rust disk cache — survives localStorage wipes
   try {
-    const diskData = await invoke<UsageResponse | null>("read_usage_cache");
+    const diskData = await invokeCompat<UsageResponse | null>("read_usage_cache");
     if (diskData) {
       setPersistentAccumulator(diskData);
       setUsageStats(diskData);
@@ -734,7 +734,7 @@ async function fetchStats(): Promise<void> {
   setLoading(true);
   setError(null);
   try {
-    const settings = await invoke<{ proxyPort: number; managementKey: string }>(
+    const settings = await invokeCompat<{ proxyPort: number; managementKey: string }>(
       "get_settings",
     );
 
@@ -742,7 +742,7 @@ async function fetchStats(): Promise<void> {
     const key = settings.managementKey ?? "aether-managed";
 
     // Rust command deserializes to UsageResponse — no JSON.parse needed
-    const response = await invoke<UsageResponse>("fetch_usage_stats", {
+    const response = await invokeCompat<UsageResponse>("fetch_usage_stats", {
       port,
       managementKey: key,
     });

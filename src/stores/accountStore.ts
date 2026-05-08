@@ -1,5 +1,5 @@
 import { createSignal, createResource } from "solid-js";
-import { invoke } from "@tauri-apps/api/core";
+import { invokeCompat } from "./commandClient";
 
 export interface ProviderAccountInfo {
   provider: string;
@@ -20,28 +20,28 @@ const [version, setVersion] = createSignal(0);
 const [accounts] = createResource(
   version,
   async () => {
-    const result = await invoke<ProviderAccountInfo[]>("get_provider_accounts");
+    const result = await invokeCompat<ProviderAccountInfo[]>("get_provider_accounts");
     return result;
   }
 );
 
 async function addAccount(provider: string, key: string): Promise<void> {
-  await invoke("add_provider_account", { provider, key });
+  await invokeCompat<void>("add_provider_account", { provider, key });
   setVersion((v) => v + 1);
 }
 
 async function updateKey(provider: string, key: string): Promise<void> {
-  await invoke("update_api_key", { provider, key });
+  await invokeCompat<void>("update_api_key", { provider, key });
   setVersion((v) => v + 1);
 }
 
 async function deleteAccount(provider: string): Promise<void> {
-  await invoke("delete_provider_account", { provider });
+  await invokeCompat<void>("delete_provider_account", { provider });
   setVersion((v) => v + 1);
 }
 
 async function validateKey(provider: string, key: string): Promise<boolean> {
-  return await invoke<boolean>("validate_api_key", { provider, key });
+  return await invokeCompat<boolean>("validate_api_key", { provider, key });
 }
 
 function refresh(): void {

@@ -12,6 +12,18 @@ use std::sync::Mutex;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::core::application::services::command_transition::CommandTransitionService;
+use crate::commands::V2CommandEnvelope;
+use crate::core::domain::ports::{ProjectionWriteRequest, ProjectionWriter};
+use crate::core::infrastructure::adapters::AtomicProjectionWriter;
+use crate::core::infrastructure::persistence::SqlitePersistenceAdapter;
+
+fn command_transition_service() -> Result<CommandTransitionService, String> {
+    let persistence = SqlitePersistenceAdapter::default();
+    persistence.initialize().map_err(|e| e.to_string())?;
+    Ok(CommandTransitionService::new(persistence))
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -94,12 +106,15 @@ pub fn read_providers_file() -> Result<AgentProvidersFile> {
 
 fn write_providers_file(file: &AgentProvidersFile) -> Result<()> {
     let path = config_path()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).context("Failed to create config dir")?;
-    }
     let content =
         serde_json::to_string_pretty(file).context("Failed to serialize agent-providers.json")?;
-    std::fs::write(&path, content).context("Failed to write agent-providers.json")
+
+    AtomicProjectionWriter
+        .write_projection(ProjectionWriteRequest {
+            target: path.to_string_lossy().to_string(),
+            content,
+        })
+        .context("Failed to write agent-providers.json")
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +188,7 @@ pub fn add_agent_provider(
     models_endpoint: bool,
     api_key: Option<String>,
     headers: Option<HashMap<String, String>>,
-) -> Result<(), String> {
+) -> Result<V2CommandEnvelope<()>, String> {
     if id.is_empty() || name.is_empty() || base_url.is_empty() {
         return Err("id, name, and base_url are required".to_string());
     }
@@ -193,7 +208,7 @@ pub fn add_agent_provider(
     let entry = AgentProviderEntry {
         name,
         base_url,
-        compatibility,
+        compatibility: compatibility.clone(),
         models_endpoint,
         models: vec![],
         headers: headers.unwrap_or_default(),
@@ -206,8 +221,20 @@ pub fn add_agent_provider(
             keychain_store(&app, &id, &key)?;
         }
     }
+
+    command_transition_service()?
+        .record_mutation_external(
+            "add_agent_provider",
+            vec![
+                ("providerId", id.clone()),
+                ("compatibility", compatibility.clone()),
+                ("modelsEndpoint", models_endpoint.to_string()),
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+
     trigger_cliproxy_sync(&app);
-    Ok(())
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
@@ -220,7 +247,7 @@ pub fn update_agent_provider(
     models_endpoint: Option<bool>,
     api_key: Option<String>,
     headers: Option<HashMap<String, String>>,
-) -> Result<(), String> {
+) -> Result<V2CommandEnvelope<()>, String> {
     let mut file = read_providers_file().map_err(|e| e.to_string())?;
     let entry = file
         .providers
@@ -255,12 +282,23 @@ pub fn update_agent_provider(
             keychain_store(&app, &id, &key)?;
         }
     }
+
+    command_transition_service()?
+        .record_mutation_external(
+            "update_agent_provider",
+            vec![("providerId", id.clone())],
+        )
+        .map_err(|e| e.to_string())?;
+
     trigger_cliproxy_sync(&app);
-    Ok(())
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 #[tauri::command]
-pub fn delete_agent_provider(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub fn delete_agent_provider(
+    app: tauri::AppHandle,
+    id: String,
+) -> Result<V2CommandEnvelope<()>, String> {
     let mut file = read_providers_file().map_err(|e| e.to_string())?;
     if file.providers.remove(&id).is_none() {
         return Err(format!("Provider '{}' not found", id));
@@ -268,8 +306,16 @@ pub fn delete_agent_provider(app: tauri::AppHandle, id: String) -> Result<(), St
     write_providers_file(&file).map_err(|e| e.to_string())?;
     // Best-effort keychain cleanup
     let _ = keychain_delete(&app, &id);
+
+    command_transition_service()?
+        .record_mutation_external(
+            "delete_agent_provider",
+            vec![("providerId", id.clone())],
+        )
+        .map_err(|e| e.to_string())?;
+
     trigger_cliproxy_sync(&app);
-    Ok(())
+    Ok(V2CommandEnvelope::ok(()))
 }
 
 /// Return the stored API key (plaintext) for a provider. Only used when editing — frontend never sees keys otherwise.
