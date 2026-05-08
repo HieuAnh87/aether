@@ -99,6 +99,10 @@ async function deleteProvider(id: string): Promise<void> {
   await refresh();
 }
 
+async function fetchKey(id: string): Promise<string | null> {
+  return invoke<string | null>("get_agent_provider_key", { id });
+}
+
 async function fetchModels(id: string): Promise<string[]> {
   const models = await invoke<string[]>("fetch_provider_models", { id });
   // Refresh local state to pick up cached model list
@@ -129,6 +133,7 @@ export const agentProviderStore = {
   addProvider,
   updateProvider,
   deleteProvider,
+  fetchKey,
   fetchModels,
   validateKey,
 };

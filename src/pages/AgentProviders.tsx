@@ -32,6 +32,7 @@ const ProviderModal: Component<ProviderModalProps> = (props) => {
   const [validating, setValidating] = createSignal(false);
   const [validated, setValidated] = createSignal<boolean | null>(null);
   const [error, setError] = createSignal("");
+  const [showKey, setShowKey] = createSignal(false);
 
   // Reset when modal opens / edit target changes
   createEffect(() => {
@@ -43,7 +44,8 @@ const ProviderModal: Component<ProviderModalProps> = (props) => {
         setBaseUrl(ep.baseUrl);
         setCompatibility(ep.compatibility);
         setModelsEndpoint(ep.modelsEndpoint);
-        setApiKey(""); // never pre-fill keys
+        setShowKey(false);
+        agentProviderStore.fetchKey(ep.id).then((k) => setApiKey(k ?? ""));
         setValidated(null);
         setError("");
       } else {
@@ -53,6 +55,7 @@ const ProviderModal: Component<ProviderModalProps> = (props) => {
         setCompatibility("openai");
         setModelsEndpoint(true);
         setApiKey("");
+        setShowKey(false);
         setValidated(null);
         setError("");
       }
@@ -226,17 +229,43 @@ const ProviderModal: Component<ProviderModalProps> = (props) => {
         </div>
 
         {/* API Key */}
-        <div>
-          <Input
-            label={isEditing() ? "New API Key (leave blank to keep existing)" : "API Key"}
-            type="password"
-            value={apiKey()}
-            onInput={(v: string) => {
-              setApiKey(v);
-              setValidated(null);
-            }}
-            placeholder={isEditing() ? "Enter new key to replace..." : "sk-..."}
-          />
+        <div class="flex items-end gap-2">
+          <div class="flex-1">
+            <Input
+              label={isEditing() ? "New API Key (optional)" : "API Key"}
+              type={showKey() ? "text" : "password"}
+              value={apiKey()}
+              onInput={(v: string) => {
+                setApiKey(v);
+                setValidated(null);
+              }}
+              placeholder={isEditing() ? "Enter new key to replace..." : "sk-..."}
+            />
+          </div>
+          <Show when={apiKey().length > 0}>
+            <button
+              type="button"
+              onClick={() => setShowKey((v) => !v)}
+              class="mb-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-glass-bg text-text-muted hover:text-text transition-colors"
+              aria-label={showKey() ? "Hide API key" : "Show API key"}
+              title={showKey() ? "Hide API key" : "Show API key"}
+            >
+              <Show
+                when={showKey()}
+                fallback={
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                }
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              </Show>
+            </button>
+          </Show>
         </div>
 
         {/* Validation status */}
@@ -445,12 +474,15 @@ const ProviderItemCard: Component<ProviderCardProps> = (props) => {
       <Show when={expanded()}>
         <hr class="mt-3 border-border/40" />
         <div class="mt-3 space-y-2.5">
-          {/* Provider ID row */}
+          {/* Provider ID row with copy */}
           <div class="flex items-center gap-2">
             <span class="w-16 shrink-0 font-caption text-xs text-text-muted">ID</span>
-            <span class="rounded bg-glass-bg px-1.5 py-0.5 font-mono text-xs text-text-secondary">
-              {props.provider.id}
-            </span>
+            <div class="flex items-center gap-1.5">
+              <span class="rounded bg-glass-bg px-1.5 py-0.5 font-mono text-xs text-text-secondary">
+                {props.provider.id}
+              </span>
+              <CopyButton text={props.provider.id} />
+            </div>
           </div>
 
           {/* Base URL row with copy */}
@@ -464,16 +496,13 @@ const ProviderItemCard: Component<ProviderCardProps> = (props) => {
             </div>
           </div>
 
-          {/* API Key row with copy */}
+          {/* API Key row — masked only, keys cannot be exported */}
           <Show when={props.provider.hasKey}>
             <div class="flex items-center gap-2">
               <span class="w-16 shrink-0 font-caption text-xs text-text-muted">Key</span>
-              <div class="flex items-center gap-1.5">
-                <span class="font-mono text-xs text-text-secondary">
-                  {props.provider.maskedKey ?? "••••••••••••••••"}
-                </span>
-                <CopyButton text={props.provider.maskedKey ?? ""} />
-              </div>
+              <span class="font-mono text-xs text-text-secondary">
+                {props.provider.maskedKey ?? "••••••••••••••••"}
+              </span>
             </div>
           </Show>
           <Show when={!props.provider.hasKey}>
@@ -552,7 +581,10 @@ const AgentProviders: Component = () => {
   const handleDelete = async (id: string) => {
     const p = agentProviderStore.providers().find((x) => x.id === id);
     if (!p) return;
-    if (!window.confirm(`Delete provider "${p.name}"? This will also remove the API key from Keychain.`)) return;
+    const msg = p.hasKey
+      ? `Delete provider "${p.name}"? This will also remove the stored API key.`
+      : `Delete provider "${p.name}"?`;
+    if (!window.confirm(msg)) return;
     try {
       await agentProviderStore.deleteProvider(id);
       toast.success(`${p.name} removed`);
@@ -581,7 +613,7 @@ const AgentProviders: Component = () => {
           <h1 class="font-title text-text">Agent Providers</h1>
           <p class="mt-1 font-body text-text-secondary">
             Add OpenAI-compatible or Anthropic-compatible providers for your CLI agents.
-            API keys are stored securely in macOS Keychain.
+            API keys are stored securely in an encrypted local vault.
           </p>
         </div>
         <Button variant="primary" onClick={handleAdd} class="whitespace-nowrap">

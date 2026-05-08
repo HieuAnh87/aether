@@ -103,6 +103,7 @@ pub fn run() {
             commands::agent_providers::delete_agent_provider,
             commands::agent_providers::fetch_provider_models,
             commands::agent_providers::validate_agent_provider_key,
+            commands::agent_providers::get_agent_provider_key,
         ])
         .setup(|app| {
             use tauri_plugin_log::{Builder as LogBuilder, Target, TargetKind};

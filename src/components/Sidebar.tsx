@@ -1,5 +1,6 @@
 import type { JSX } from "solid-js";
 import { Show } from "solid-js";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface SidebarProps {
   proxyStatus?: "running" | "stopped" | "starting" | "restarting" | "crashed";
@@ -8,6 +9,16 @@ interface SidebarProps {
 }
 
 const Sidebar = (props: SidebarProps) => {
+  const handleDragMouseDown = async (e: MouseEvent) => {
+    if (e.button !== 0) return;
+
+    try {
+      await getCurrentWindow().startDragging();
+    } catch {
+      // Keep CSS drag region as fallback
+    }
+  };
+
   const statusDot = () => {
     switch (props.proxyStatus) {
       case "running":
@@ -46,7 +57,8 @@ const Sidebar = (props: SidebarProps) => {
       {/* Logo / App name area with drag region */}
       <div
         data-tauri-drag-region
-        class="flex items-center gap-2 pt-8 px-4 pb-4"
+        class="flex items-center gap-2 pt-8 px-4 pb-5"
+        onMouseDown={handleDragMouseDown}
       >
         {/* Aether hexagon logo */}
         <svg width="20" height="20" viewBox="0 0 100 100" fill="none" class="flex-shrink-0">

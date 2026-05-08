@@ -4,7 +4,7 @@
 //! for CLI agents (e.g. Groq, Together AI, OpenRouter, Mistral, etc.).
 //!
 //! Config file: ~/.config/aether/agent-providers.json
-//! API keys:    macOS Keychain, key = "aether-provider.{id}"
+//! API keys:    encrypted local vault, key = "provider.{id}"
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -136,7 +136,7 @@ pub fn get_agent_providers(app: tauri::AppHandle) -> Result<Vec<AgentProviderInf
         .into_iter()
         .map(|(id, entry)| {
             // Single decrypt per provider — get value and derive has_key from it
-            let raw_key = crate::secrets::get(&app, &keychain_key(&id)).ok().flatten();
+            let raw_key = keychain_get_raw(&app, &id).ok().flatten();
             let has_key = raw_key.is_some();
             let masked_key = raw_key.map(|k| crate::secrets::mask_value(&k));
             AgentProviderInfo {
@@ -270,6 +270,12 @@ pub fn delete_agent_provider(app: tauri::AppHandle, id: String) -> Result<(), St
     let _ = keychain_delete(&app, &id);
     trigger_cliproxy_sync(&app);
     Ok(())
+}
+
+/// Return the stored API key (plaintext) for a provider. Only used when editing — frontend never sees keys otherwise.
+#[tauri::command]
+pub fn get_agent_provider_key(app: tauri::AppHandle, id: String) -> Result<Option<String>, String> {
+    keychain_get_raw(&app, &id)
 }
 
 /// Fetch models from the provider's /models endpoint, cache in config, return list.

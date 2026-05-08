@@ -1,5 +1,6 @@
 import type { JSX } from "solid-js";
 import { Show } from "solid-js";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface AppShellProps {
   sidebar: JSX.Element;
@@ -8,6 +9,16 @@ interface AppShellProps {
 }
 
 const AppShell = (props: AppShellProps) => {
+  const handleDragMouseDown = async (e: MouseEvent) => {
+    if (e.button !== 0) return;
+
+    try {
+      await getCurrentWindow().startDragging();
+    } catch {
+      // Keep CSS drag region as fallback
+    }
+  };
+
   return (
     <div class="flex h-screen w-screen overflow-hidden">
       {/* Sidebar */}
@@ -15,10 +26,11 @@ const AppShell = (props: AppShellProps) => {
 
       {/* Main content area */}
       <div class="relative flex flex-1 flex-col overflow-hidden">
-        {/* Invisible titlebar drag region at the top of the content area */}
+        {/* Dedicated top drag bar */}
         <div
           data-tauri-drag-region
-          class="h-7 w-full flex-shrink-0"
+          class="h-9 flex-shrink-0 border-b border-border/60 bg-bg-elevated/60"
+          onMouseDown={handleDragMouseDown}
         />
 
         {/* Scrollable content */}
