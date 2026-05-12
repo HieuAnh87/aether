@@ -130,18 +130,29 @@ const MODEL_PRICING: Record<string, Record<string, { input: number; output: numb
 };
 
 function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
+  if (!Number.isFinite(n)) return "0";
+  const abs = Math.abs(n);
+  const nfCompact = new Intl.NumberFormat(undefined, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  });
+  if (abs >= 1_000) return nfCompact.format(n);
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(n);
 }
 
 function formatCurrency(n: number, digits = 2): string {
-  return `$${n.toFixed(digits)}`;
+  if (!Number.isFinite(n)) return "$0.00";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  }).format(n);
 }
 
 function formatPercent(n: number): string {
   if (!Number.isFinite(n)) return "0%";
-  return `${Math.round(n)}%`;
+  return new Intl.NumberFormat(undefined, { style: "percent", maximumFractionDigits: 0 }).format(n / 100);
 }
 
 function normalizeModelName(model: string): string {
@@ -236,13 +247,13 @@ interface SummaryMetricProps {
 
 const SummaryMetric: Component<SummaryMetricProps> = (props) => (
   <div class={props.emphasis ? "surface-inset rounded-lg p-3.5" : "rounded-lg p-3.5"}>
-    <p class="font-caption text-text-muted">{props.label}</p>
+    <p class="font-caption text-text-muted text-wrap-safe bidi-auto" dir="auto" lang="und">{props.label}</p>
     <Show when={!props.loading} fallback={<div class="skeleton mt-2.5 h-8 w-28" />}>
-      <p class={`${props.emphasis ? "mt-1.5 text-2xl leading-none" : "mt-1.5 text-base"} font-semibold text-text tabular-nums tracking-tight`}>
+      <p class={`${props.emphasis ? "mt-1.5 text-2xl leading-none" : "mt-1.5 text-base"} font-semibold text-text tabular-nums tracking-tight text-wrap-safe bidi-auto`} dir="auto" lang="und">
         {props.value}
       </p>
     </Show>
-    <p class="font-caption mt-1.5 text-text-muted">{props.sub}</p>
+    <p class="font-caption mt-1.5 text-text-muted text-wrap-safe bidi-auto" dir="auto" lang="und">{props.sub}</p>
   </div>
 );
 
@@ -274,13 +285,13 @@ const Analytics: Component = () => {
   const lastFetchedText = () => {
     const ts = analyticsStore.lastFetched();
     if (ts === null) return "not synced yet";
-    return new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
   };
 
   const lastSuccessSyncText = () => {
     const ts = health().lastSuccessSyncAt;
     if (ts === null) return "never";
-    return new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+    return new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
   };
 
   const dataStatus = () => {
@@ -351,7 +362,7 @@ const Analytics: Component = () => {
       const day = new Date(today);
       day.setDate(day.getDate() - i);
       const date = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, "0")}-${String(day.getDate()).padStart(2, "0")}`;
-      slots.push({ date, label: day.toLocaleDateString("en-US", { month: "short", day: "numeric" }) });
+      slots.push({ date, label: new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(day) });
     }
 
     const tokenData = slots.map((slot) => tokenMap.get(slot.date) ?? 0);
@@ -398,7 +409,7 @@ const Analytics: Component = () => {
   }));
 
   return (
-    <div class="space-y-5">
+    <div class="mx-auto w-full max-w-[1440px] space-y-6 px-1 xl:space-y-7">
       <header class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div class="max-w-[65ch]">
           <h1 class="font-title text-text">Analytics</h1>
@@ -419,7 +430,7 @@ const Analytics: Component = () => {
                     type="button"
                     aria-pressed={activeRange() === range.value}
                     onClick={() => analyticsStore.setTimeRange(range.value)}
-                    class={`focus-ring min-h-8 rounded-md px-3 font-caption transition-colors ${
+                    class={`focus-ring min-h-8 rounded-md px-3 font-caption transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/55 focus-visible:ring-offset-2 focus-visible:ring-offset-bg ${
                       activeRange() === range.value
                         ? "bg-primary-muted text-text shadow-[inset_0_0_0_1px_var(--color-primary)]"
                         : "text-text-muted hover:bg-bg-surface-hover hover:text-text"
@@ -435,7 +446,8 @@ const Analytics: Component = () => {
               type="button"
               onClick={() => analyticsStore.refresh()}
               disabled={analyticsStore.loading()}
-              class="button button-secondary"
+              class="button button-secondary transition-opacity duration-300 disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/55 focus-visible:ring-offset-2 focus-visible:ring-offset-bg"
+              aria-label="Refresh analytics data"
             >
               <Show when={analyticsStore.loading()} fallback={<>Refresh</>}>
                 <span class="button-spinner" aria-hidden="true" />
@@ -464,6 +476,13 @@ const Analytics: Component = () => {
         </section>
       </Show>
 
+      <Show when={analyticsStore.error() !== null && !proxyOffline()}>
+        <section class="surface-panel rounded-lg border-warning/25 bg-warning-muted p-3.5" aria-live="polite">
+          <p class="font-body text-warning text-wrap-safe bidi-auto" dir="auto" lang="und">Unable to refresh analytics right now, showing the most recent available data.</p>
+          <p class="font-caption mt-1 text-text-muted text-wrap-safe bidi-auto" dir="auto" lang="und">{analyticsStore.error()}</p>
+        </section>
+      </Show>
+
       <GlassCard class="!p-0 overflow-hidden">
         <div class="grid gap-0 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <SummaryMetric
@@ -487,14 +506,14 @@ const Analytics: Component = () => {
           />
           <SummaryMetric
             label="Requests"
-            value={analyticsStore.filteredTotalRequests().toLocaleString()}
+            value={new Intl.NumberFormat().format(analyticsStore.filteredTotalRequests())}
             sub={rangeText()}
             loading={isInitialLoad()}
           />
         </div>
       </GlassCard>
 
-      <div class="grid grid-cols-1 gap-3.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(320px,0.8fr)]">
+      <div class="grid grid-cols-1 gap-3.5 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,0.82fr)] 2xl:grid-cols-[minmax(0,1.6fr)_minmax(380px,0.86fr)]">
         <GlassCard>
           <div class="mb-4 flex flex-col gap-2.5 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -542,22 +561,22 @@ const Analytics: Component = () => {
               </div>
             }
           >
-            <div class="space-y-2.5">
+            <div class="max-h-[520px] space-y-2.5 overflow-y-auto pr-1 xl:max-h-[620px]">
               <For each={costDrivers()}>
                 {(driver, index) => {
                   const share = () => (driver.cost / Math.max(driversTotal(), 0.01)) * 100;
                   const tokens = () => Math.round(driver.cost / (((lookupRate(driver.provider, driver.model).input + lookupRate(driver.provider, driver.model).output) / 2) / 1_000_000));
 
                   return (
-                    <div class="rounded-lg border border-border-muted bg-bg-elevated p-3">
+                    <div class="rounded-lg border border-border-muted bg-bg-elevated p-3 transition-colors duration-200 hover:bg-bg-surface-hover">
                       <div class="flex items-start gap-2.5">
-                        <span class="font-mono flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-muted text-primary">
+                        <span class="font-mono flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary-muted text-primary ring-1 ring-primary/35">
                           {index() + 1}
                         </span>
                         <div class="min-w-0 flex-1">
                           <div class="flex items-start justify-between gap-2.5">
                             <div class="min-w-0">
-                              <p class="truncate text-[0.9375rem] font-medium text-text" title={driver.model}>{driver.model}</p>
+                              <p class="truncate text-[0.9375rem] font-medium leading-tight text-text bidi-auto" title={driver.model} dir="auto" lang="und">{driver.model}</p>
                               <p class="font-caption mt-0.5 capitalize text-text-muted">{driver.provider}</p>
                             </div>
                             <div class="text-right">
@@ -592,7 +611,7 @@ const Analytics: Component = () => {
         </GlassCard>
       </div>
 
-      <div class="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,0.95fr)_minmax(300px,0.55fr)]">
+      <div class="grid grid-cols-1 gap-3.5 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.7fr)] 2xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.72fr)]">
         <GlassCard>
           <div class="mb-3.5 flex items-start justify-between gap-3">
             <div>
@@ -609,7 +628,7 @@ const Analytics: Component = () => {
           </Show>
         </GlassCard>
 
-        <GlassCard>
+        <GlassCard class="xl:sticky xl:top-4 xl:self-start">
           <h2 class="font-section-header text-text">Data quality</h2>
           <div class="mt-3.5 space-y-3.5">
             <div>
@@ -618,11 +637,11 @@ const Analytics: Component = () => {
             </div>
             <div>
               <p class="font-caption text-text-muted">Estimate basis</p>
-              <p class="font-body mt-1 text-text">Costs are estimates based on reported token totals and known model rates.</p>
+              <p class="font-body mt-1 text-text text-wrap-safe bidi-auto" dir="auto" lang="und">Costs are estimates based on reported token totals and known model rates.</p>
             </div>
             <div>
               <p class="font-caption text-text-muted">Model breakdown</p>
-              <p class="font-body mt-1 text-text">Breakdown is range-adjusted from lifetime provider totals.</p>
+              <p class="font-body mt-1 text-text text-wrap-safe bidi-auto" dir="auto" lang="und">Breakdown is range-adjusted from lifetime provider totals.</p>
             </div>
             <Show when={costDrivers().length > 0}>
               <div>

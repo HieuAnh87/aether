@@ -23,6 +23,7 @@ const sizeClasses: Record<NonNullable<ModalProps["size"]>, string> = {
 const Modal = (props: ModalProps) => {
   let dialogRef: HTMLDivElement | undefined;
   let previousActiveElement: Element | null = null;
+  let previousBodyOverflow = "";
   const titleId = createUniqueId();
 
   // Escape key listener
@@ -35,6 +36,9 @@ const Modal = (props: ModalProps) => {
         'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
       );
       firstFocusable?.focus();
+      if (!firstFocusable) {
+        dialogRef?.focus();
+      }
     });
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -62,11 +66,12 @@ const Modal = (props: ModalProps) => {
     };
 
     document.addEventListener("keydown", handleKeyDown);
+    previousBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     onCleanup(() => {
       document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousBodyOverflow;
       if (previousActiveElement instanceof HTMLElement) {
         previousActiveElement.focus();
       }
@@ -94,11 +99,12 @@ const Modal = (props: ModalProps) => {
             role="dialog"
             aria-modal="true"
             aria-labelledby={props.title !== undefined ? titleId : undefined}
+            tabIndex={-1}
             class={`surface-raised relative max-h-[calc(100vh-2rem)] w-full overflow-hidden rounded-xl transition-all duration-200 ${sizeClass()} ${props.class ?? ""}`}
           >
             <Show when={props.title !== undefined}>
-              <div class="flex items-center justify-between border-b border-border/80 px-6 py-4">
-                <h2 id={titleId} class="font-section-header text-text">{props.title}</h2>
+              <div class="flex items-center justify-between border-b border-border/80 px-6 py-4 gap-3">
+                <h2 id={titleId} class="font-section-header text-text text-wrap-safe bidi-auto" dir="auto" lang="und">{props.title}</h2>
                 <button
                   type="button"
                   onClick={props.onClose}

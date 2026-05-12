@@ -76,12 +76,12 @@ const Input: Component<InputProps> = (props) => {
         </Show>
         {inputEl}
         <Show when={local.helper && !local.error}>
-          <p id={helperId()} class="field-helper">
+          <p id={helperId()} class="field-helper text-wrap-safe bidi-auto" dir="auto" lang="und">
             {local.helper}
           </p>
         </Show>
         <Show when={local.error}>
-          <p id={errorId()} class="field-error" role="alert">
+          <p id={errorId()} class="field-error text-wrap-safe bidi-auto" role="alert" dir="auto" lang="und">
             {local.error}
           </p>
         </Show>

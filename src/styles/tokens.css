@@ -21,6 +21,17 @@
   line-height: 1.55;
 }
 
+.text-wrap-safe {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.bidi-auto {
+  direction: auto;
+  unicode-bidi: plaintext;
+}
+
 .font-caption {
   font-size: 12px;
   font-weight: 500;

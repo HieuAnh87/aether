@@ -4,6 +4,7 @@ import {
   useContext,
   For,
   Show,
+  onCleanup,
   type ParentProps,
 } from "solid-js";
 import { Portal } from "solid-js/web";
@@ -59,6 +60,7 @@ function ringClasses(type: ToastItem["type"]): string {
 
 export function ToastProvider(props: ParentProps) {
   const [toasts, setToasts] = createSignal<ToastItem[]>([]);
+  const toastTimers = new Map<string, number>();
 
   function addToast(type: ToastItem["type"], message: string, title?: string) {
     const id = `toast-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -67,13 +69,32 @@ export function ToastProvider(props: ParentProps) {
 
     const timeout = type === "error" ? 7000 : type === "warning" ? 5000 : 3200;
     if (timeout > 0) {
-      setTimeout(() => removeToast(id), timeout);
+      const timer = window.setTimeout(() => {
+        toastTimers.delete(id);
+        removeToast(id);
+      }, timeout);
+      toastTimers.set(id, timer);
     }
   }
 
   function removeToast(id: string) {
+    const existing = toastTimers.get(id);
+    if (existing !== undefined) {
+      window.clearTimeout(existing);
+      toastTimers.delete(id);
+    }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }
+
+  const clearAllToasts = () => {
+    toastTimers.forEach((timerId) => {
+      window.clearTimeout(timerId);
+    });
+    toastTimers.clear();
+    setToasts([]);
+  };
+
+  onCleanup(clearAllToasts);
 
   const toast: ToastAPI = {
     success: (message, title) => addToast("success", message, title),
@@ -181,7 +202,7 @@ export function ToastProvider(props: ParentProps) {
                       {item.title}
                     </p>
                   </Show>
-                  <p class="font-body text-text-secondary leading-snug">
+                  <p class="font-body text-text-secondary leading-snug text-wrap-safe bidi-auto" dir="auto" lang="und">
                     {item.message}
                   </p>
                 </div>
