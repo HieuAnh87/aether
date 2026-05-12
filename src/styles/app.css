@@ -2,49 +2,91 @@
 @import "./tokens.css";
 
 /*
- * Aether Design System Tokens
- * Dark glassmorphism theme for macOS desktop app
+ * Aether product-register tokens
+ * Warm graphite / parchment foundation for macOS utility surfaces.
  */
 
 @theme {
-  /* === Colors (Dark theme - cool blue tint) === */
-  --color-bg: #0A0A12;
-  --color-bg-elevated: #12141A;
-  --color-bg-surface: #1A1C24;
+  /* === Core neutrals === */
+  --color-canvas: oklch(0.16 0.01 78);
+  --color-elevated: oklch(0.20 0.01 78);
+  --color-surface: oklch(0.24 0.01 78);
+  --color-surface-hover: oklch(0.27 0.01 78);
+  --color-surface-strong: oklch(0.30 0.01 78);
+  --color-surface-inset: oklch(0.18 0.01 78);
+  --color-overlay: oklch(0.10 0.01 78 / 0.84);
 
-  --color-primary: #3B82F6;
-  --color-primary-hover: #2563EB;
-  --color-primary-muted: rgba(59, 130, 246, 0.1);
+  --color-bg: var(--color-canvas);
+  --color-bg-elevated: var(--color-elevated);
+  --color-bg-surface: var(--color-surface);
+  --color-bg-surface-hover: var(--color-surface-hover);
+  --color-bg-surface-strong: var(--color-surface-strong);
 
-  --color-purple: #8B5CF6;
-  --color-purple-muted: rgba(139, 92, 246, 0.1);
+  --color-text: oklch(0.95 0.01 88);
+  --color-text-secondary: oklch(0.80 0.015 82);
+  --color-text-muted: oklch(0.67 0.015 82);
+  --color-text-tertiary: oklch(0.57 0.015 82);
+  --color-text-inverse: oklch(0.17 0.01 78);
 
-  --color-success: #22C55E;
-  --color-success-muted: rgba(34, 197, 94, 0.1);
-  --color-warning: #F59E0B;
-  --color-warning-muted: rgba(245, 158, 11, 0.1);
-  --color-error: #EF4444;
-  --color-error-muted: rgba(239, 68, 68, 0.1);
+  --color-white: oklch(0.97 0.01 88);
+  --color-black: oklch(0.17 0.01 78);
 
-  --color-text: #FFFFFF;
-  --color-text-secondary: #9CA3AF;
-  --color-text-tertiary: #6B7280;
+  --color-border: oklch(0.32 0.01 78);
+  --color-border-hover: oklch(0.40 0.01 78);
+  --color-border-strong: oklch(0.46 0.01 78);
+  --color-border-muted: oklch(0.28 0.01 78 / 0.72);
 
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-hover: rgba(255, 255, 255, 0.12);
+  /* === Primary accent === */
+  --color-primary: oklch(0.58 0.13 55);
+  --color-primary-hover: oklch(0.66 0.14 55);
+  --color-primary-muted: oklch(0.58 0.13 55 / 0.16);
+  --color-primary-soft: oklch(0.58 0.13 55 / 0.08);
+  --color-primary-foreground: oklch(0.17 0.01 78);
+  --color-accent: var(--color-primary);
+  --color-accent-hover: var(--color-primary-hover);
+  --color-accent-muted: var(--color-primary-muted);
+  --color-accent-foreground: var(--color-primary-foreground);
 
-  /* Provider brand colors */
-  --color-anthropic: #A855F7;
-  --color-openai: #10B981;
-  --color-google: #3B82F6;
-  --color-vertexai: #6759F4;
+  /* === Status colors === */
+  --color-success: oklch(0.71 0.07 154);
+  --color-success-muted: oklch(0.71 0.07 154 / 0.14);
+  --color-warning: var(--color-primary);
+  --color-warning-muted: var(--color-primary-muted);
+  --color-error: oklch(0.63 0.09 27);
+  --color-error-muted: oklch(0.63 0.09 27 / 0.14);
+  --color-info: oklch(0.67 0.06 244);
+  --color-info-muted: oklch(0.67 0.06 244 / 0.14);
 
-  /* === Glass surface === */
-  --color-glass-bg: rgba(255, 255, 255, 0.06);
-  --color-glass-bg-hover: rgba(255, 255, 255, 0.08);
+  /* === Provider recognition colors (muted, contextual) === */
+  --color-anthropic: oklch(0.63 0.08 314);
+  --color-openai: oklch(0.66 0.06 168);
+  --color-google: oklch(0.64 0.07 250);
+  --color-vertexai: oklch(0.62 0.07 286);
+  --color-provider-anthropic: var(--color-anthropic);
+  --color-provider-openai: var(--color-openai);
+  --color-provider-google: var(--color-google);
+  --color-provider-vertexai: var(--color-vertexai);
+
+  /* === Compatibility aliases === */
+  --color-glass-bg: var(--color-bg-surface);
+  --color-glass-bg-hover: var(--color-bg-surface-hover);
+  --color-status-success: var(--color-success);
+  --color-status-success-muted: var(--color-success-muted);
+  --color-status-warning: var(--color-warning);
+  --color-status-warning-muted: var(--color-warning-muted);
+  --color-status-error: var(--color-error);
+  --color-status-error-muted: var(--color-error-muted);
+  --color-status-info: var(--color-info);
+  --color-status-info-muted: var(--color-info-muted);
+
+  /* === Scrollbars === */
+  --color-scrollbar-track: transparent;
+  --color-scrollbar-thumb: oklch(0.42 0.01 78 / 0.58);
+  --color-scrollbar-thumb-hover: oklch(0.52 0.01 78 / 0.78);
 
   /* === Typography === */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "SFMono-Regular", ui-monospace, "Cascadia Mono", "Liberation Mono", monospace;
 
   --font-size-xs: 11px;
   --font-size-sm: 12px;
@@ -63,9 +105,11 @@
   --radius-full: 9999px;
 
   /* === Shadows === */
-  --shadow-glass: 0 4px 24px rgba(0, 0, 0, 0.2);
-  --shadow-glow-blue: 0 0 20px rgba(59, 130, 246, 0.15);
-  --shadow-glow-purple: 0 0 20px rgba(139, 92, 246, 0.15);
+  --shadow-surface: 0 1px 0 oklch(0.95 0.01 88 / 0.04) inset, 0 1px 2px oklch(0.08 0.01 78 / 0.18);
+  --shadow-panel: 0 14px 34px -26px oklch(0.08 0.01 78 / 0.82), 0 1px 0 oklch(0.95 0.01 88 / 0.04) inset;
+  --shadow-floating: 0 20px 48px -30px oklch(0.08 0.01 78 / 0.88), 0 1px 0 oklch(0.95 0.01 88 / 0.05) inset;
+  --shadow-glass: var(--shadow-floating);
+  --shadow-focus-ring: 0 0 0 3px oklch(0.58 0.13 55 / 0.24);
 
   /* === Layout === */
   --spacing-sidebar: 220px;
@@ -76,42 +120,69 @@
   --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* === Light Theme (Warm yellowish tint) === */
+/* === Light Theme (Warm parchment) === */
 [data-theme="light"] {
-  --color-bg: #FFFEF5;
-  --color-bg-elevated: #FEF9F0;
-  --color-bg-surface: #F5F0E8;
+  --color-canvas: oklch(0.97 0.01 88);
+  --color-elevated: oklch(0.94 0.01 88);
+  --color-surface: oklch(0.90 0.01 88);
+  --color-surface-hover: oklch(0.87 0.01 88);
+  --color-surface-strong: oklch(0.83 0.01 88);
+  --color-surface-inset: oklch(0.92 0.01 88);
+  --color-overlay: oklch(0.25 0.01 78 / 0.10);
 
-  --color-primary: #3B82F6;
-  --color-primary-hover: #2563EB;
-  --color-primary-muted: rgba(59, 130, 246, 0.1);
+  --color-text: oklch(0.27 0.015 72);
+  --color-text-secondary: oklch(0.41 0.015 72);
+  --color-text-muted: oklch(0.53 0.015 72);
+  --color-text-tertiary: oklch(0.63 0.015 72);
+  --color-text-inverse: oklch(0.97 0.01 88);
 
-  --color-purple: #8B5CF6;
-  --color-purple-muted: rgba(139, 92, 246, 0.1);
+  --color-white: oklch(0.99 0.005 88);
+  --color-black: oklch(0.22 0.01 72);
 
-  --color-success: #22C55E;
-  --color-success-muted: rgba(34, 197, 94, 0.1);
-  --color-warning: #F59E0B;
-  --color-warning-muted: rgba(245, 158, 11, 0.1);
-  --color-error: #EF4444;
-  --color-error-muted: rgba(239, 68, 68, 0.1);
+  --color-border: oklch(0.82 0.01 82);
+  --color-border-hover: oklch(0.74 0.01 82);
+  --color-border-strong: oklch(0.69 0.01 82);
+  --color-border-muted: oklch(0.86 0.01 82 / 0.84);
 
-  --color-text: #3D3832; /* Warm dark gray for readability on cream */
-  --color-text-secondary: #6B5D52;
-  --color-text-tertiary: #9C8B7E;
+  --color-primary: oklch(0.58 0.13 55);
+  --color-primary-hover: oklch(0.66 0.14 55);
+  --color-primary-muted: oklch(0.58 0.13 55 / 0.12);
+  --color-primary-soft: oklch(0.58 0.13 55 / 0.06);
+  --color-primary-foreground: oklch(0.18 0.01 72);
 
-  --color-border: rgba(0, 0, 0, 0.08);
-  --color-border-hover: rgba(0, 0, 0, 0.12);
+  --color-success: oklch(0.60 0.07 154);
+  --color-success-muted: oklch(0.60 0.07 154 / 0.14);
+  --color-warning: var(--color-primary);
+  --color-warning-muted: var(--color-primary-muted);
+  --color-error: oklch(0.56 0.09 27);
+  --color-error-muted: oklch(0.56 0.09 27 / 0.14);
+  --color-info: oklch(0.58 0.06 244);
+  --color-info-muted: oklch(0.58 0.06 244 / 0.14);
 
-  --color-glass-bg: rgba(0, 0, 0, 0.04);
-  --color-glass-bg-hover: rgba(0, 0, 0, 0.06);
+  --color-glass-bg: var(--color-bg-surface);
+  --color-glass-bg-hover: var(--color-bg-surface-hover);
 
-  --shadow-glass: 0 4px 24px rgba(0, 0, 0, 0.08);
-  --shadow-glow-blue: 0 0 20px rgba(59, 130, 246, 0.1);
-  --shadow-glow-purple: 0 0 20px rgba(139, 92, 246, 0.1);
+  --color-scrollbar-thumb: oklch(0.58 0.01 72 / 0.42);
+  --color-scrollbar-thumb-hover: oklch(0.48 0.01 72 / 0.60);
+
+  --shadow-surface: 0 1px 0 oklch(0.99 0.005 88 / 0.46) inset, 0 1px 2px oklch(0.25 0.01 72 / 0.10);
+  --shadow-panel: 0 14px 30px -24px oklch(0.20 0.01 72 / 0.14), 0 1px 0 oklch(0.99 0.005 88 / 0.38) inset;
+  --shadow-floating: 0 18px 40px -28px oklch(0.20 0.01 72 / 0.18), 0 1px 0 oklch(0.99 0.005 88 / 0.40) inset;
+  --shadow-glass: var(--shadow-floating);
+  --shadow-focus-ring: 0 0 0 3px oklch(0.58 0.13 55 / 0.20);
 }
 
 /* === Base Styles === */
+html {
+  color-scheme: dark;
+  scrollbar-color: var(--color-scrollbar-thumb) var(--color-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -125,6 +196,7 @@ body {
   font-family: var(--font-sans);
   font-size: var(--font-size-base);
   line-height: 1.5;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   /* Prevent text selection on native-feeling elements */
@@ -137,17 +209,26 @@ input, textarea, pre, code {
   user-select: text;
 }
 
+::selection {
+  background: var(--color-primary-muted);
+  color: var(--color-text);
+}
+
 /* === Glass Surface Utility === */
 .glass {
   background: var(--color-glass-bg);
+  color: var(--color-text);
   border: 1px solid var(--color-border);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-glass);
+  transition: background-color var(--transition-normal), border-color var(--transition-normal), box-shadow var(--transition-normal), transform var(--transition-normal);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
 .glass:hover {
   background: var(--color-glass-bg-hover);
   border-color: var(--color-border-hover);
+  box-shadow: var(--shadow-panel);
 }
 
 /* === Scrollbar Styling (WebKit) === */
@@ -157,16 +238,22 @@ input, textarea, pre, code {
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--color-scrollbar-track);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--color-scrollbar-thumb);
   border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--color-scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 /* === Titlebar drag region === */
