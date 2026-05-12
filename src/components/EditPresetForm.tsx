@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { Badge, Button } from "../components";
 import {
   presetStore,
@@ -60,6 +60,22 @@ const EditPresetForm = (props: EditPresetFormProps) => {
     }));
   };
 
+  const hasUnsavedChanges = createMemo(() => {
+    const current = localModels();
+    const initial = initialModels();
+    return AGENT_ROLES.some(
+      (role) => current[role]?.model !== initial[role]?.model || current[role]?.variant !== initial[role]?.variant
+    );
+  });
+
+  const handleCancel = () => {
+    if (hasUnsavedChanges()) {
+      const ok = window.confirm("Discard unsaved role changes?");
+      if (!ok) return;
+    }
+    props.onCancel();
+  };
+
   const handleSave = async () => {
     if (saving()) return;
     setSaving(true);
@@ -87,14 +103,22 @@ const EditPresetForm = (props: EditPresetFormProps) => {
   };
 
   return (
-    <div class="flex flex-col gap-4">
-      {/* Header */}
-      <h2 class="font-section-header text-text">
-        Editing: {props.preset.name}
-      </h2>
+    <div class="flex flex-col gap-5">
+      <div class="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p class="font-caption uppercase tracking-[0.12em] text-text-muted">Role editor</p>
+          <h2 class="mt-1 font-section-header text-text">Editing {props.preset.name}</h2>
+          <p class="mt-1 max-w-[58ch] font-body text-text-secondary">
+            Choose the model each agent role should use when this preset is active.
+          </p>
+        </div>
+        <Show when={hasUnsavedChanges()}>
+          <Badge variant="warning">Unsaved</Badge>
+        </Show>
+      </div>
 
       {/* Agent rows */}
-      <div class="flex flex-col gap-3">
+      <div class="grid gap-3">
         <For each={AGENT_ROLES}>
           {(role) => {
             const currentModel = () => localModels()[role]?.model ?? "";
@@ -112,11 +136,16 @@ const EditPresetForm = (props: EditPresetFormProps) => {
             const currentVariant = () => localModels()[role]?.variant ?? "";
 
             return (
-              <div class="flex flex-col gap-1">
+              <div class="rounded-lg border border-border bg-bg-surface p-3">
                 {/* Role label */}
-                <label class="font-caption text-text-secondary capitalize">
-                  {role}
-                </label>
+                <div class="mb-2 flex items-center justify-between gap-2">
+                  <label class="font-caption text-text-secondary capitalize">
+                    {role}
+                  </label>
+                  <Show when={isUnknown()}>
+                    <Badge variant="warning">Unknown model</Badge>
+                  </Show>
+                </div>
 
                 {/* Select row */}
                 <div class="flex items-center gap-2">
@@ -129,7 +158,7 @@ const EditPresetForm = (props: EditPresetFormProps) => {
                   <select
                     value={currentModel()}
                     onChange={(e) => handleSelect(role, e.currentTarget.value)}
-                    class="bg-glass-bg border border-border rounded-md h-9 px-3 text-sm text-text font-body w-full focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-colors duration-150"
+                    class="h-9 w-full rounded-md border border-border bg-bg-elevated px-3 font-body text-sm text-text outline-none transition-colors duration-150 focus:border-primary focus:ring-1 focus:ring-primary"
                   >
                     <option value="">Select model…</option>
                     <For each={availModels()}>
@@ -138,26 +167,21 @@ const EditPresetForm = (props: EditPresetFormProps) => {
                       )}
                     </For>
                   </select>
-
-                  {/* Unknown model badge */}
-                  <Show when={isUnknown()}>
-                    <Badge variant="warning">Unknown model</Badge>
-                  </Show>
                 </div>
 
                 {/* Variant selector — only if model has variants */}
                 <Show when={hasVariants()}>
-                  <div class="flex items-center gap-1.5 mt-1.5 ml-4">
-                    <span class="font-caption text-text-muted text-xs">Thinking:</span>
-                    <div class="inline-flex rounded-md border border-border overflow-hidden">
+                  <div class="ml-4 mt-2 flex items-center gap-1.5">
+                    <span class="font-caption text-xs text-text-muted">Thinking:</span>
+                    <div class="inline-flex overflow-hidden rounded-md border border-border">
                       <For each={modelVariants()}>
                         {(v) => (
                           <button
                             type="button"
                             class={`px-2.5 py-0.5 text-xs font-medium transition-colors ${
                               currentVariant() === v
-                                ? "bg-primary text-white"
-                                : "bg-glass-bg text-text-secondary hover:bg-border/50"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-bg-elevated text-text-secondary hover:bg-bg-surface-hover"
                             }`}
                             onClick={() => handleVariantChange(role, v)}
                           >
@@ -175,11 +199,11 @@ const EditPresetForm = (props: EditPresetFormProps) => {
       </div>
 
       {/* Footer */}
-      <div class="flex justify-end gap-2 pt-2">
+      <div class="sticky bottom-0 -mx-5 flex justify-end gap-2 border-t border-border bg-bg-surface/95 px-5 pt-4 md:-mx-6 md:px-6">
         <Button
           variant="ghost"
           size="sm"
-          onClick={props.onCancel}
+          onClick={handleCancel}
           disabled={saving()}
         >
           Cancel
