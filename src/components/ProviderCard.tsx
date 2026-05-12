@@ -22,7 +22,7 @@ const ProviderCard: Component<ProviderCardProps> = (props) => {
   const statusBadgeVariant = () => {
     switch (status()) {
       case "verified":
-        return "active" as const;
+        return "success" as const;
       case "unverified":
         return "warning" as const;
       case "error":

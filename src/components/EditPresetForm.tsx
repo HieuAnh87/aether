@@ -213,8 +213,10 @@ const EditPresetForm = (props: EditPresetFormProps) => {
           size="sm"
           onClick={handleSave}
           disabled={saving()}
+          loading={saving()}
+          loadingLabel="Saving..."
         >
-          {saving() ? "Saving…" : "Save"}
+          Save
         </Button>
       </div>
     </div>

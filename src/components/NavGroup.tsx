@@ -32,7 +32,7 @@ const NavGroup: Component<NavGroupProps> = (props) => {
           height="12"
           viewBox="0 0 12 12"
           fill="none"
-          class={`shrink-0 transition-transform duration-200 ${open() ? "rotate-90 text-text" : "text-text-tertiary"}`}
+          class={`shrink-0 transition-transform duration-200 ease-out ${open() ? "rotate-90 text-text" : "text-text-tertiary"}`}
           aria-hidden="true"
         >
           <path d="M4 2l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />

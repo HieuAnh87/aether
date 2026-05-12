@@ -8,6 +8,7 @@ interface NavItemProps {
   onClick?: () => void;
   href?: string;
   class?: string;
+  disabled?: boolean;
 }
 
 const NavItem: Component<NavItemProps> = (props) => {
@@ -20,7 +21,10 @@ const NavItem: Component<NavItemProps> = (props) => {
   const inactiveClass =
     "border border-transparent text-text-secondary hover:border-border hover:bg-bg-surface hover:text-text";
 
-  const stateClass = () => (props.active ? activeClass : inactiveClass);
+  const disabledClass =
+    "border border-transparent text-text-tertiary opacity-60 cursor-not-allowed";
+
+  const stateClass = () => (props.disabled ? disabledClass : props.active ? activeClass : inactiveClass);
 
   const combinedClass = () =>
     [baseClass, stateClass(), props.class].filter(Boolean).join(" ");
@@ -32,8 +36,9 @@ const NavItem: Component<NavItemProps> = (props) => {
         <button
           type="button"
           class={combinedClass()}
-          onClick={props.onClick}
+          onClick={props.disabled ? undefined : props.onClick}
           aria-pressed={props.active}
+          disabled={props.disabled}
         >
           <Show when={props.icon}>
             <span
@@ -51,8 +56,16 @@ const NavItem: Component<NavItemProps> = (props) => {
       <a
         href={props.href}
         class={combinedClass()}
-        onClick={props.onClick}
+        onClick={(e) => {
+          if (props.disabled) {
+            e.preventDefault();
+            return;
+          }
+          props.onClick?.();
+        }}
         aria-current={props.active ? "page" : undefined}
+        aria-disabled={props.disabled ? "true" : undefined}
+        tabIndex={props.disabled ? -1 : undefined}
       >
         <Show when={props.icon}>
           <span

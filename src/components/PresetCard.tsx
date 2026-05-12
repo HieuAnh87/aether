@@ -13,11 +13,11 @@ interface PresetCardProps {
 
 function providerColor(modelId: string): string {
   const provider = getProvider(modelId).toLowerCase();
-  if (provider === "anthropic" || provider === "troll") return "#A855F7";
-  if (provider === "openai") return "#10B981";
-  if (provider === "google") return "#3B82F6";
-  if (provider === "vertexai") return "#6759F4";
-  return "#6B7280";
+  if (provider === "anthropic" || provider === "troll") return "var(--color-provider-anthropic)";
+  if (provider === "openai") return "var(--color-provider-openai)";
+  if (provider === "google") return "var(--color-provider-google)";
+  if (provider === "vertexai") return "var(--color-provider-vertexai)";
+  return "var(--color-text-tertiary)";
 }
 
 function capitalize(s: string): string {
@@ -31,7 +31,7 @@ const PresetCard = (props: PresetCardProps) => {
       <div class="mb-4 flex items-center gap-2">
         <span class="font-section-header text-text flex-1">{props.preset.name}</span>
         <Show when={props.preset.active}>
-          <Badge variant="active">ACTIVE</Badge>
+          <Badge variant="active">Active</Badge>
         </Show>
       </div>
 
@@ -64,7 +64,7 @@ const PresetCard = (props: PresetCardProps) => {
                       {modelId()}
                     </span>
                     <Show when={!isModelValid(modelId())}>
-                      <Badge variant="warning">⚠</Badge>
+                      <Badge variant="warning" title="Unknown model">Unknown</Badge>
                     </Show>
                   </div>
                 </Show>

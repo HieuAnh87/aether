@@ -72,8 +72,10 @@ const CreatePresetModal = (props: CreatePresetModalProps) => {
             size="sm"
             onClick={handleCreate}
             disabled={!isValid() || loading()}
+            loading={loading()}
+            loadingLabel="Creating..."
           >
-            {loading() ? "Creating…" : "Create"}
+            Create
           </Button>
         </div>
       </div>

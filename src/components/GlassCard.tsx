@@ -1,10 +1,12 @@
 import type { JSX } from "solid-js";
+import { Dynamic } from "solid-js/web";
 
 interface GlassCardProps {
   active?: boolean;
   children: JSX.Element;
   class?: string;
   onClick?: () => void;
+  as?: "section" | "article" | "div";
 }
 
 const GlassCard = (props: GlassCardProps) => {
@@ -16,18 +18,22 @@ const GlassCard = (props: GlassCardProps) => {
     }
   };
 
-  const activeStyles = "border-border-strong bg-bg-surface-strong shadow-floating ring-1 ring-primary/10";
+  const activeStyles = "surface-selected";
+  const interactiveStyles = props.onClick ? "surface-interactive focus-ring" : "";
+  const Component = props.as ?? "div";
 
   return (
-    <div
+    <Dynamic
+      component={Component}
       onClick={props.onClick}
       onKeyDown={handleKeyDown}
       role={props.onClick ? "button" : undefined}
       tabIndex={props.onClick ? 0 : undefined}
-      class={`surface-panel rounded-lg p-6 transition-all duration-200 ${props.onClick ? "cursor-pointer hover:border-border-hover hover:bg-bg-surface-hover" : ""} ${props.active ? activeStyles : ""} ${props.class ?? ""}`}
+      aria-pressed={props.onClick ? Boolean(props.active) : undefined}
+      class={`surface-panel rounded-lg p-6 ${interactiveStyles} ${props.active ? activeStyles : ""} ${props.class ?? ""}`}
     >
       {props.children}
-    </div>
+    </Dynamic>
   );
 };
 

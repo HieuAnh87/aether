@@ -212,7 +212,7 @@ const KpiCard: Component<KpiCardProps> = (props) => (
         <p class="font-caption text-text-muted mb-1">{props.label}</p>
         <Show
           when={!props.loading}
-          fallback={<div class="h-7 w-24 rounded bg-white/[0.05] animate-pulse" />}
+          fallback={<div class="skeleton h-7 w-24" />}
         >
           <p class="text-2xl font-semibold text-text tabular-nums">{props.value}</p>
         </Show>
@@ -445,8 +445,8 @@ const Analytics: Component = () => {
         </div>
         <div class="flex items-center gap-3">
           <Show when={isCached()}>
-            <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
-              <span class="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+            <span class="chip status-warning border-warning/20">
+              <span class="status-dot status-dot-warning !h-1.5 !w-1.5" />
               {cachedBadgeText()}
             </span>
           </Show>
@@ -454,14 +454,14 @@ const Analytics: Component = () => {
             <span class="font-caption text-text-muted">Live {lastFetchedStr()}</span>
           </Show>
           {/* Time range filter */}
-          <div class="flex items-center rounded-md bg-white/[0.04] p-0.5 gap-0.5">
+          <div class="flex items-center gap-0.5 rounded-md border border-border bg-bg-elevated p-0.5">
             <For each={TIME_RANGES}>
               {(tr) => (
                 <button
                   onClick={() => analyticsStore.setTimeRange(tr.value)}
                   class={`px-2.5 py-1 rounded text-xs font-caption transition-colors ${
                     activeRange() === tr.value
-                      ? "bg-white/10 text-text"
+                      ? "bg-bg-surface-strong text-text"
                       : "text-text-muted hover:text-text"
                   }`}
                 >
@@ -484,8 +484,8 @@ const Analytics: Component = () => {
 
       {/* ── Offline banner ── */}
       <Show when={degraded() && !proxyOffline()}>
-        <div class="glass rounded-lg p-4 border border-amber-500/20 bg-amber-500/5">
-          <p class="font-body text-amber-400/85 text-sm">
+        <div class="surface-panel rounded-lg border-warning/20 bg-warning-muted p-4">
+          <p class="font-body text-warning text-sm">
             ⚠ Analytics is in degraded mode ({health().consecutiveFailures} sync failure{health().consecutiveFailures > 1 ? "s" : ""}).
             Showing best-known values from local cache.
           </p>
@@ -494,8 +494,8 @@ const Analytics: Component = () => {
       </Show>
 
       <Show when={proxyOffline()}>
-        <div class="glass rounded-lg p-4 border border-yellow-500/20 bg-yellow-500/5">
-          <p class="font-body text-yellow-400/80 text-sm">
+        <div class="surface-panel rounded-lg border-warning/20 bg-warning-muted p-4">
+          <p class="font-body text-warning text-sm">
             ⚠ Proxy is not running. Start the proxy to see live analytics.
           </p>
           <Show when={isCached()}>
@@ -535,7 +535,7 @@ const Analytics: Component = () => {
           <h3 class="font-section-header text-text mb-4">Requests by Hour</h3>
           <Show
             when={!isInitialLoad()}
-            fallback={<div class="h-52 w-full rounded bg-white/[0.04] animate-pulse" />}
+            fallback={<div class="skeleton h-52 w-full" />}
           >
             <div class="relative h-52">
               <Bar data={reqHourData()} options={barOptions} />
@@ -547,7 +547,7 @@ const Analytics: Component = () => {
           <h3 class="font-section-header text-text mb-4">Token Usage by Hour</h3>
           <Show
             when={!isInitialLoad()}
-            fallback={<div class="h-52 w-full rounded bg-white/[0.04] animate-pulse" />}
+            fallback={<div class="skeleton h-52 w-full" />}
           >
             <div class="relative h-52">
               <Line data={tokHourData()} options={lineOptions} />

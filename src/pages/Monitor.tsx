@@ -48,12 +48,18 @@ const Monitor: Component = () => {
 
   const connectionTone = () => {
     if (requestStore.streamConnected()) {
-      return "border-emerald-500/25 bg-emerald-500/10 text-emerald-200";
+      return "border-success/25 bg-success-muted text-success";
     }
 
     return requestStore.streamError()
-      ? "border-amber-500/25 bg-amber-500/10 text-amber-100"
+      ? "border-warning/25 bg-warning-muted text-warning"
       : "border-border bg-bg-surface text-text-secondary";
+  };
+
+  const connectionDot = () => {
+    if (requestStore.streamConnected()) return "status-dot-success";
+    if (requestStore.streamError()) return "status-dot-warning";
+    return "status-dot-neutral";
   };
 
   return (
@@ -64,10 +70,7 @@ const Monitor: Component = () => {
             <div class="flex flex-wrap items-center gap-2">
               <h1 class="font-section-header text-[15px] text-text">Monitor</h1>
               <span class={`inline-flex items-center rounded-full border px-2.5 py-1 font-caption text-[11px] ${connectionTone()}`}>
-                <span
-                  class={`mr-1.5 h-2 w-2 rounded-full ${requestStore.streamConnected() ? "bg-emerald-400" : requestStore.streamError() ? "bg-amber-400" : "bg-border"}`}
-                  aria-hidden="true"
-                />
+                <span class={`mr-1.5 status-dot ${connectionDot()}`} aria-hidden="true" />
                 {connectionLabel()}
               </span>
               <span class="inline-flex items-center rounded-full border border-border bg-bg-elevated px-2.5 py-1 font-caption text-[11px] text-text-secondary tabular-nums">
@@ -88,7 +91,7 @@ const Monitor: Component = () => {
           <div class="flex flex-wrap items-center gap-2">
             <Show when={hasFilters()}>
               <button
-                class="inline-flex h-8 items-center rounded-md border border-border bg-transparent px-3 text-[12px] font-medium text-text-secondary transition-colors hover:border-amber-500/30 hover:bg-amber-500/10 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0"
+                class="button button-ghost h-8 px-3 text-[12px]"
                 onClick={() => {
                   requestStore.setFilterProvider(null);
                   requestStore.setFilterStatus("all");
@@ -100,7 +103,7 @@ const Monitor: Component = () => {
             </Show>
 
             <button
-              class="inline-flex h-8 items-center rounded-md border border-border bg-transparent px-3 text-[12px] font-medium text-text-secondary transition-colors hover:border-border-hover hover:bg-bg-elevated hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0"
+              class="button button-ghost h-8 px-3 text-[12px]"
               onClick={() => requestStore.clearRequests()}
             >
               Clear stream
@@ -110,17 +113,17 @@ const Monitor: Component = () => {
       </header>
 
       <Show when={!requestStore.streamConnected() && requestStore.streamError()}>
-        <div class="shrink-0 border-b border-amber-500/20 bg-amber-500/10 px-5 py-3">
+        <div class="shrink-0 border-b border-warning/20 bg-warning-muted px-5 py-3">
           <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <p class="font-caption text-[12px] leading-5 text-amber-100">
+            <p class="font-caption text-[12px] leading-5 text-warning">
               Live updates are paused. CLIProxyAPI event streaming is not available.
               <Show when={requestStore.streamError()}>
-                {(error) => <span class="text-amber-100/70"> {error()}</span>}
+                {(error) => <span class="text-text-secondary"> {error()}</span>}
               </Show>
             </p>
 
             <button
-              class="inline-flex h-8 items-center rounded-md border border-amber-500/25 bg-amber-500/10 px-3 text-[12px] font-medium text-amber-50 transition-colors hover:bg-amber-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0"
+              class="button button-secondary h-8 px-3 text-[12px]"
               onClick={() => requestStore.startStream()}
             >
               Reconnect

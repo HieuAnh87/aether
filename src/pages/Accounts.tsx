@@ -97,28 +97,28 @@ const Accounts: Component = () => {
         fallback={
           <div class="space-y-4">
             <div class="grid gap-3 md:grid-cols-3">
-              <div class="h-24 animate-pulse rounded-xl border border-border/80 bg-bg-surface" />
-              <div class="h-24 animate-pulse rounded-xl border border-border/80 bg-bg-surface" />
-              <div class="h-24 animate-pulse rounded-xl border border-border/80 bg-bg-surface" />
+              <div class="skeleton h-24 rounded-xl border border-border/80" />
+              <div class="skeleton h-24 rounded-xl border border-border/80" />
+              <div class="skeleton h-24 rounded-xl border border-border/80" />
             </div>
 
             <div class="overflow-hidden rounded-xl border border-border/80 bg-bg-surface shadow-panel">
-              <div class="h-14 animate-pulse border-b border-border/70 bg-bg-elevated/60" />
+              <div class="skeleton h-14 rounded-none border-b border-border/70" />
               <div class="divide-y divide-border/70 px-4">
                 <For each={[0, 1, 2]}>
                   {(_index) => (
                     <div class="flex flex-col gap-3 py-4 md:flex-row md:items-center md:justify-between">
                       <div class="flex min-w-0 items-start gap-3">
-                        <div class="mt-0.5 h-10 w-10 shrink-0 animate-pulse rounded-lg bg-border/30" />
+                        <div class="skeleton mt-0.5 h-10 w-10 shrink-0 rounded-lg" />
                         <div class="min-w-0 space-y-2">
-                          <div class="h-4 w-28 animate-pulse rounded bg-border/30" />
-                          <div class="h-3 w-40 animate-pulse rounded bg-border/20" />
-                          <div class="h-3 w-32 animate-pulse rounded bg-border/20" />
+                          <div class="skeleton h-4 w-28" />
+                          <div class="skeleton h-3 w-40" />
+                          <div class="skeleton h-3 w-32" />
                         </div>
                       </div>
                       <div class="flex gap-2">
-                        <div class="h-8 w-24 animate-pulse rounded-md bg-border/30" />
-                        <div class="h-8 w-20 animate-pulse rounded-md bg-border/20" />
+                        <div class="skeleton h-8 w-24" />
+                        <div class="skeleton h-8 w-20" />
                       </div>
                     </div>
                   )}

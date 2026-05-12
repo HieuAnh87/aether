@@ -22,18 +22,18 @@ const Sidebar = (props: SidebarProps) => {
   const statusDot = () => {
     switch (props.proxyStatus) {
       case "running":
-        return <span class="inline-block h-2 w-2 rounded-full bg-success flex-shrink-0" />;
+        return <span class="status-dot status-dot-success" />;
       case "starting":
       case "stopping":
-        return <span class="inline-block h-2 w-2 rounded-full bg-warning animate-pulse flex-shrink-0" />;
+        return <span class="status-dot status-dot-warning animate-pulse" />;
       case "degraded":
-        return <span class="inline-block h-2 w-2 rounded-full bg-warning flex-shrink-0" />;
+        return <span class="status-dot status-dot-warning" />;
       case "stopped":
-        return <span class="inline-block h-2 w-2 rounded-full bg-error flex-shrink-0" />;
+        return <span class="status-dot status-dot-error" />;
       case "crashed":
-        return <span class="inline-block h-2 w-2 rounded-full bg-error flex-shrink-0" />;
+        return <span class="status-dot status-dot-error" />;
       default:
-        return <span class="inline-block h-2 w-2 rounded-full bg-text-tertiary flex-shrink-0" />;
+        return <span class="status-dot status-dot-neutral" />;
     }
   };
 

@@ -3,10 +3,10 @@ import { For, Show } from "solid-js";
 import { requestStore } from "../stores/requestStore";
 
 const PROVIDER_COLORS: Record<string, string> = {
-  anthropic: "text-violet-300",
-  openai: "text-emerald-300",
-  google: "text-amber-300",
-  vertexai: "text-sky-200",
+  anthropic: "text-provider-anthropic",
+  openai: "text-provider-openai",
+  google: "text-provider-google",
+  vertexai: "text-provider-vertexai",
 };
 
 function formatTime(timestamp: string): string {
@@ -14,12 +14,12 @@ function formatTime(timestamp: string): string {
 }
 
 function getStatusDotClass(req: { statusCode?: number; inFlight: boolean }): string {
-  if (req.inFlight) return "bg-amber-400 animate-pulse";
-  if (!req.statusCode) return "bg-border";
-  if (req.statusCode >= 200 && req.statusCode < 300) return "bg-emerald-400";
-  if (req.statusCode >= 400 && req.statusCode < 500) return "bg-amber-400";
-  if (req.statusCode >= 500) return "bg-rose-400";
-  return "bg-border";
+  if (req.inFlight) return "status-dot-warning animate-pulse";
+  if (!req.statusCode) return "status-dot-neutral";
+  if (req.statusCode >= 200 && req.statusCode < 300) return "status-dot-success";
+  if (req.statusCode >= 400 && req.statusCode < 500) return "status-dot-warning";
+  if (req.statusCode >= 500) return "status-dot-error";
+  return "status-dot-neutral";
 }
 
 function getProviderColorClass(provider: string): string {
@@ -70,7 +70,7 @@ const RequestTable: Component = () => {
               <Show when={hasFilters()}>
                 <button
                   type="button"
-                  class="inline-flex h-8 items-center rounded-md border border-border bg-transparent px-3 text-[12px] font-medium text-text-secondary transition-colors hover:border-amber-500/30 hover:bg-amber-500/10 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0"
+                  class="button button-ghost h-8 px-3 text-[12px]"
                   onClick={() => {
                     requestStore.setFilterProvider(null);
                     requestStore.setFilterStatus("all");
@@ -112,9 +112,9 @@ const RequestTable: Component = () => {
                       tabIndex={0}
                       aria-selected={selected()}
                       aria-label={`${req.method} ${req.endpoint} ${statusLabel()}`}
-                      class={`group cursor-pointer outline-none transition-colors focus-visible:bg-amber-500/10 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-500/30 ${
+                      class={`group cursor-pointer outline-none transition-colors focus-visible:bg-primary-soft focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-primary/30 ${
                         selected()
-                          ? "bg-amber-500/10 shadow-[inset_0_0_0_1px_rgba(217,119,6,0.26)]"
+                          ? "bg-primary-soft shadow-[inset_0_0_0_1px_var(--color-primary-muted)]"
                           : "hover:bg-bg-elevated"
                       }`}
                       onClick={() => requestStore.selectRequest(req.id)}
@@ -138,7 +138,7 @@ const RequestTable: Component = () => {
                       </td>
                       <td class="px-3 py-3 whitespace-nowrap">
                         <div class="flex items-center gap-2">
-                          <span class={`h-2 w-2 rounded-full ${getStatusDotClass(req)}`} aria-hidden="true" />
+                          <span class={`status-dot ${getStatusDotClass(req)}`} aria-hidden="true" />
                           <span class="font-caption text-[12px] tabular-nums text-text-secondary">{statusLabel()}</span>
                         </div>
                       </td>

@@ -1,12 +1,13 @@
-import type { Component } from "solid-js";
-import { Show } from "solid-js";
+import type { Component, JSX } from "solid-js";
+import { Show, createUniqueId, splitProps } from "solid-js";
 
-interface InputProps {
-  type?: "text" | "number" | "password";
+interface InputProps extends Omit<JSX.InputHTMLAttributes<HTMLInputElement>, "value" | "onInput" | "class" | "type"> {
+  type?: "text" | "number" | "password" | "url" | "email" | "search";
   value?: string;
   onInput?: (value: string) => void;
   placeholder?: string;
   label?: string;
+  helper?: string;
   error?: string;
   disabled?: boolean;
   class?: string;
@@ -14,51 +15,74 @@ interface InputProps {
 }
 
 const Input: Component<InputProps> = (props) => {
-  const errorId = () => (props.id ? `${props.id}-error` : undefined);
+  const [local, rest] = splitProps(props, [
+    "type",
+    "value",
+    "onInput",
+    "placeholder",
+    "label",
+    "helper",
+    "error",
+    "disabled",
+    "class",
+    "id",
+  ]);
+  const fallbackId = createUniqueId();
+  const inputId = () => local.id ?? fallbackId;
+  const errorId = () => `${inputId()}-error`;
+  const helperId = () => `${inputId()}-helper`;
+  const describedBy = () => {
+    const ids = [local.helper ? helperId() : undefined, local.error ? errorId() : undefined].filter(Boolean);
+    return ids.length ? ids.join(" ") : undefined;
+  };
 
   const inputClass = () =>
     [
       "field h-9 px-3 text-sm font-body",
       "focus-ring",
-      props.error ? "border-error/70 focus:border-error" : "",
-      props.disabled ? "cursor-not-allowed" : "",
-      props.class ?? "",
+      local.class ?? "",
     ]
       .filter(Boolean)
       .join(" ");
 
   const inputEl = (
     <input
-      id={props.id}
-      type={props.type ?? "text"}
-      value={props.value ?? ""}
-      placeholder={props.placeholder}
-      disabled={props.disabled}
-      aria-invalid={props.error ? "true" : undefined}
-      aria-describedby={errorId()}
+      {...rest}
+      id={inputId()}
+      type={local.type ?? "text"}
+      value={local.value ?? ""}
+      placeholder={local.placeholder}
+      disabled={local.disabled}
+      aria-invalid={local.error ? "true" : undefined}
+      aria-describedby={describedBy()}
       class={inputClass()}
-      onInput={(e) => props.onInput?.(e.currentTarget.value)}
+      onInput={(e) => local.onInput?.(e.currentTarget.value)}
     />
   );
 
   return (
     <Show
-      when={props.label || props.error}
+      when={local.label || local.helper || local.error}
       fallback={inputEl}
     >
-      <div class="flex flex-col gap-1">
-        <Show when={props.label}>
+      <div class="flex flex-col gap-1.5">
+        <Show when={local.label}>
           <label
-            for={props.id}
-            class="font-caption text-text-secondary"
+            for={inputId()}
+            class="field-label font-caption"
           >
-            {props.label}
+            {local.label}
           </label>
         </Show>
         {inputEl}
-        <Show when={props.error}>
-          <p id={errorId()} class="font-caption text-error">
-            {props.error}
+        <Show when={local.helper && !local.error}>
+          <p id={helperId()} class="field-helper">
+            {local.helper}
+          </p>
+        </Show>
+        <Show when={local.error}>
+          <p id={errorId()} class="field-error" role="alert">
+            {local.error}
           </p>
         </Show>
       </div>

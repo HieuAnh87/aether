@@ -11,7 +11,7 @@ import { Portal } from "solid-js/web";
 // Types
 interface ToastItem {
   id: string;
-  type: "success" | "error" | "info";
+  type: "success" | "error" | "warning" | "info";
   title?: string;
   message: string;
 }
@@ -19,6 +19,7 @@ interface ToastItem {
 interface ToastAPI {
   success: (message: string, title?: string) => void;
   error: (message: string, title?: string) => void;
+  warning: (message: string, title?: string) => void;
   info: (message: string, title?: string) => void;
 }
 
@@ -36,6 +37,8 @@ function indicatorClasses(type: ToastItem["type"]): string {
       return "status-success";
     case "error":
       return "status-error";
+    case "warning":
+      return "status-warning";
     case "info":
       return "status-info";
   }
@@ -47,6 +50,8 @@ function ringClasses(type: ToastItem["type"]): string {
       return "ring-1 ring-success/12";
     case "error":
       return "ring-1 ring-error/12";
+    case "warning":
+      return "ring-1 ring-warning/12";
     case "info":
       return "ring-1 ring-info/12";
   }
@@ -60,9 +65,9 @@ export function ToastProvider(props: ParentProps) {
     const item: ToastItem = { id, type, message, title };
     setToasts((prev) => [...prev, item]);
 
-    // Auto-dismiss success and info after 3s; errors persist
-    if (type !== "error") {
-      setTimeout(() => removeToast(id), 3000);
+    const timeout = type === "error" ? 7000 : type === "warning" ? 5000 : 3200;
+    if (timeout > 0) {
+      setTimeout(() => removeToast(id), timeout);
     }
   }
 
@@ -73,6 +78,7 @@ export function ToastProvider(props: ParentProps) {
   const toast: ToastAPI = {
     success: (message, title) => addToast("success", message, title),
     error: (message, title) => addToast("error", message, title),
+    warning: (message, title) => addToast("warning", message, title),
     info: (message, title) => addToast("info", message, title),
   };
 
@@ -81,15 +87,18 @@ export function ToastProvider(props: ParentProps) {
       {props.children}
       <Portal>
         <div
-          class="fixed top-4 right-4 z-50 flex flex-col gap-2"
-          style={{ "max-width": "360px", width: "360px" }}
+          class="fixed top-4 right-4 z-50 flex w-[min(calc(100vw-2rem),380px)] flex-col gap-2"
+          role="region"
+          aria-label="Notifications"
         >
           <For each={toasts()}>
             {(item) => (
               <div
-                class={`surface-raised rounded-lg px-4 py-3 shadow-floating flex items-start gap-3 ${ringClasses(item.type)}`}
+                class={`surface-raised flex items-start gap-3 rounded-lg px-4 py-3 shadow-floating ${ringClasses(item.type)}`}
+                role="status"
+                aria-live={item.type === "error" ? "assertive" : "polite"}
                 style={{
-                  animation: "toast-slide-in 200ms cubic-bezier(0.4,0,0.2,1)",
+                  animation: "toast-slide-in 200ms var(--ease-out-quart)",
                 }}
               >
                 <div class={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${indicatorClasses(item.type)}`}>
@@ -127,6 +136,25 @@ export function ToastProvider(props: ParentProps) {
                       <line x1="12" y1="16" x2="12.01" y2="16" />
                     </svg>
                   </Show>
+                  <Show when={item.type === "warning"}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-current"
+                      aria-hidden="true"
+                    >
+                      <path d="M10.3 4.2 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+                      <line x1="12" y1="9" x2="12" y2="13" />
+                      <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                  </Show>
                   <Show when={item.type === "info"}>
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
@@ -161,7 +189,7 @@ export function ToastProvider(props: ParentProps) {
                 <button
                   onClick={() => removeToast(item.id)}
                   class="shrink-0 text-text-tertiary transition-colors mt-0.5 hover:text-text focus-ring rounded-md"
-                  aria-label="Dismiss"
+                  aria-label="Dismiss notification"
                 >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
@@ -194,6 +222,12 @@ export function ToastProvider(props: ParentProps) {
           to {
             opacity: 1;
             transform: translateX(0);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          @keyframes toast-slide-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
           }
         }
       `}</style>

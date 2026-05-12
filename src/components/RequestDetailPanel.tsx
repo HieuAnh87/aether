@@ -28,7 +28,7 @@ const Section: Component<SectionProps> = (props) => {
       <button
         type="button"
         aria-expanded={open()}
-        class="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-bg-elevated focus-visible:bg-bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-500/25"
+        class="focus-ring flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-bg-elevated focus-visible:bg-bg-elevated"
         onClick={() => setOpen((v) => !v)}
       >
         <span class="font-caption text-[10px] font-medium uppercase tracking-[0.16em] text-text-tertiary">
@@ -57,17 +57,17 @@ function formatTokens(tokensUsed?: number): string {
 
 function statusTone(statusCode?: number): string {
   if (!statusCode) return "border-border bg-bg-elevated text-text-muted";
-  if (statusCode >= 200 && statusCode < 300) return "border-emerald-500/20 bg-emerald-500/10 text-emerald-100";
-  if (statusCode >= 400 && statusCode < 500) return "border-amber-500/20 bg-amber-500/10 text-amber-100";
-  if (statusCode >= 500) return "border-rose-500/20 bg-rose-500/10 text-rose-100";
+  if (statusCode >= 200 && statusCode < 300) return "border-success/20 bg-success-muted text-success";
+  if (statusCode >= 400 && statusCode < 500) return "border-warning/20 bg-warning-muted text-warning";
+  if (statusCode >= 500) return "border-error/20 bg-error-muted text-error";
   return "border-border bg-bg-elevated text-text-muted";
 }
 
 function statusDot(statusCode?: number): string {
   if (!statusCode) return "bg-border";
-  if (statusCode >= 200 && statusCode < 300) return "bg-emerald-400";
-  if (statusCode >= 400 && statusCode < 500) return "bg-amber-400";
-  if (statusCode >= 500) return "bg-rose-400";
+  if (statusCode >= 200 && statusCode < 300) return "status-dot-success";
+  if (statusCode >= 400 && statusCode < 500) return "status-dot-warning";
+  if (statusCode >= 500) return "status-dot-error";
   return "bg-border";
 }
 
@@ -99,13 +99,13 @@ const RequestDetailPanel: Component = () => {
                     </span>
                     <Show when={request().statusCode}>
                       <span class={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-caption text-[11px] font-medium ${statusTone(request().statusCode)}`}>
-                        <span class={`h-2 w-2 rounded-full ${statusDot(request().statusCode)}`} aria-hidden="true" />
+                        <span class={`status-dot ${statusDot(request().statusCode)}`} aria-hidden="true" />
                         {request().statusCode}
                       </span>
                     </Show>
                     <Show when={request().inFlight}>
-                      <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 font-caption text-[11px] font-medium text-amber-100">
-                        <span class="h-2 w-2 animate-pulse rounded-full bg-amber-400" aria-hidden="true" />
+                      <span class="inline-flex items-center gap-1.5 rounded-full border border-warning/20 bg-warning-muted px-2.5 py-1 font-caption text-[11px] font-medium text-warning">
+                        <span class="status-dot status-dot-warning animate-pulse" aria-hidden="true" />
                         Sending
                       </span>
                     </Show>
@@ -124,7 +124,7 @@ const RequestDetailPanel: Component = () => {
                 <button
                   type="button"
                   aria-label="Close request details"
-                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-transparent text-text-muted transition-colors hover:border-border-hover hover:bg-bg-surface hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0"
+                  class="button button-ghost button-icon-only h-8 w-8 shrink-0"
                   onClick={() => requestStore.selectRequest(null)}
                 >
                   ×
@@ -168,7 +168,7 @@ const RequestDetailPanel: Component = () => {
                         {body().value}
                       </pre>
                       <Show when={body().truncated}>
-                        <p class="mt-2 font-caption text-[11px] text-amber-200">
+                        <p class="mt-2 font-caption text-[11px] text-warning">
                           Truncated at {TRUNCATE_LEN} chars
                         </p>
                       </Show>
@@ -191,7 +191,7 @@ const RequestDetailPanel: Component = () => {
                         {body().value}
                       </pre>
                       <Show when={body().truncated}>
-                        <p class="mt-2 font-caption text-[11px] text-amber-200">
+                        <p class="mt-2 font-caption text-[11px] text-warning">
                           Truncated at {TRUNCATE_LEN} chars
                         </p>
                       </Show>

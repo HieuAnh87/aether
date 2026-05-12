@@ -1,27 +1,45 @@
 import type { JSX } from "solid-js";
+import { Show, splitProps } from "solid-js";
 
-interface ButtonProps {
-  variant?: "primary" | "ghost" | "danger";
-  size?: "sm" | "md";
+interface ButtonProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, "type" | "children" | "class" | "disabled"> {
+  variant?: "primary" | "secondary" | "ghost" | "danger";
+  size?: "sm" | "md" | "icon";
   disabled?: boolean;
-  onClick?: () => void;
+  loading?: boolean;
+  loadingLabel?: string;
+  onClick?: JSX.EventHandler<HTMLButtonElement, MouseEvent>;
   children: JSX.Element;
   class?: string;
-  type?: "button" | "submit";
+  type?: "button" | "submit" | "reset";
 }
 
 const Button = (props: ButtonProps) => {
+  const [local, rest] = splitProps(props, [
+    "variant",
+    "size",
+    "disabled",
+    "loading",
+    "loadingLabel",
+    "children",
+    "class",
+    "type",
+    "onClick",
+  ]);
+
   const variant = () => props.variant ?? "primary";
   const size = () => props.size ?? "md";
+  const disabled = () => Boolean(local.disabled || local.loading);
 
   const variantClasses = () => {
     switch (variant()) {
       case "primary":
         return "button-primary";
+      case "secondary":
+        return "button-secondary";
       case "ghost":
         return "button-ghost";
       case "danger":
-        return "border border-error/20 bg-error-muted text-error hover:border-error/30 hover:bg-error/20";
+        return "button-danger";
     }
   };
 
@@ -31,17 +49,29 @@ const Button = (props: ButtonProps) => {
         return "h-9 px-4 text-sm";
       case "sm":
         return "h-8 px-3 text-xs";
+      case "icon":
+        return "h-9 w-9 p-0";
     }
   };
 
   return (
     <button
-      type={props.type ?? "button"}
-      disabled={props.disabled}
-      onClick={props.onClick}
-      class={`button focus-ring ${sizeClasses()} ${variantClasses()} ${props.class ?? ""}`}
+      {...rest}
+      type={local.type ?? "button"}
+      disabled={disabled()}
+      aria-busy={local.loading ? "true" : undefined}
+      data-loading={local.loading ? "true" : undefined}
+      onClick={local.onClick}
+      class={`button focus-ring ${sizeClasses()} ${variantClasses()} ${local.size === "icon" ? "button-icon-only" : ""} ${local.class ?? ""}`}
     >
-      {props.children}
+      <Show when={local.loading}>
+        <span class="button-spinner" aria-hidden="true" />
+      </Show>
+      <span class="min-w-0 truncate">
+        <Show when={local.loading && local.loadingLabel} fallback={local.children}>
+          {local.loadingLabel}
+        </Show>
+      </span>
     </button>
   );
 };

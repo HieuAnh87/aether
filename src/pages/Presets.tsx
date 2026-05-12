@@ -290,8 +290,14 @@ const Presets: Component = () => {
           disabled={creating()}
         />
         <div class="flex flex-wrap items-center gap-2">
-          <Button variant="primary" onClick={handleCreate} disabled={!canCreate() || creating()}>
-            {creating() ? "Creating…" : "Create and configure"}
+          <Button
+            variant="primary"
+            onClick={handleCreate}
+            disabled={!canCreate() || creating()}
+            loading={creating()}
+            loadingLabel="Creating..."
+          >
+            Create and configure
           </Button>
           <p class="font-caption text-text-muted">Letters, numbers, hyphens, and underscores only.</p>
         </div>

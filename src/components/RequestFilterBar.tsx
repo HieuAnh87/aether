@@ -14,8 +14,8 @@ const RequestFilterBar: Component = () => {
   const hasActiveFilters = () => activeProvider() !== null || activeStatus() !== "all" || query().trim().length > 0;
 
   const chipBase =
-    "inline-flex items-center rounded-full border px-3 py-1.5 font-caption text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0";
-  const chipActive = "border-amber-500/25 bg-amber-500/10 text-text";
+    "focus-ring inline-flex items-center rounded-full border px-3 py-1.5 font-caption text-[11px] font-medium transition-colors";
+  const chipActive = "border-primary bg-primary-muted text-text";
   const chipInactive = "border-border bg-transparent text-text-secondary hover:border-border-hover hover:bg-bg-elevated hover:text-text";
 
   return (
@@ -79,14 +79,14 @@ const RequestFilterBar: Component = () => {
                 value={query()}
                 placeholder="Search endpoint, method, provider"
                 aria-label="Search requests by endpoint, method, or provider"
-                class="w-full rounded-md border border-border bg-bg-elevated px-3 py-2 pr-10 font-caption text-[12px] text-text placeholder:text-text-muted transition-colors focus:border-amber-500/40 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:ring-offset-0"
+                class="field w-full px-3 py-2 pr-10 font-caption text-[12px]"
                 onInput={(e) => requestStore.setSearchQuery(e.currentTarget.value)}
               />
               <Show when={query().length > 0}>
                 <button
                   type="button"
                   aria-label="Clear search"
-                  class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 font-caption text-[11px] text-text-muted transition-colors hover:bg-bg-surface hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0"
+                  class="focus-ring absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 font-caption text-[11px] text-text-muted transition-colors hover:bg-bg-surface hover:text-text"
                   onClick={() => requestStore.setSearchQuery("")}
                 >
                   Clear
@@ -101,7 +101,7 @@ const RequestFilterBar: Component = () => {
             <p class="font-caption text-[11px] text-text-muted">Filtered</p>
             <button
               type="button"
-              class="rounded-md border border-border bg-transparent px-2.5 py-1 font-caption text-[11px] font-medium text-text-secondary transition-colors hover:border-amber-500/30 hover:bg-amber-500/10 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0"
+              class="button button-ghost h-8 px-2.5 text-[11px]"
               onClick={() => {
                 requestStore.setFilterProvider(null);
                 requestStore.setFilterStatus("all");

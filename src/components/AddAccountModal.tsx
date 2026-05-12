@@ -187,11 +187,19 @@ const AddAccountModal: Component<AddAccountModalProps> = (props) => {
             variant="ghost"
             onClick={handleValidate}
             disabled={!key().trim() || validating() || saving()}
+            loading={validating()}
+            loadingLabel="Validating..."
           >
-            {validating() ? "Validating…" : "Validate"}
+            Validate
           </Button>
-          <Button variant="primary" onClick={handleSave} disabled={!key().trim() || saving() || validating()}>
-            {saving() ? "Saving…" : saveLabel()}
+          <Button
+            variant="primary"
+            onClick={handleSave}
+            disabled={!key().trim() || saving() || validating()}
+            loading={saving()}
+            loadingLabel="Saving..."
+          >
+            {saveLabel()}
           </Button>
         </div>
       </div>

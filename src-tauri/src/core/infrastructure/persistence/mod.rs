@@ -24,6 +24,7 @@ pub struct SqlitePersistenceAdapter {
     lock: Arc<Mutex<()>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct PresetRecord {
     pub id: String,
@@ -32,6 +33,7 @@ pub struct PresetRecord {
     pub is_active: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ProviderAccountRecord {
     pub id: String,
@@ -41,6 +43,7 @@ pub struct ProviderAccountRecord {
     pub metadata_json: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct AgentProviderRecord {
     pub id: String,
@@ -56,6 +59,7 @@ pub struct RuntimeStatusRecord {
     pub details_json: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct SyncJobRecord {
     pub id: String,
@@ -67,12 +71,14 @@ pub struct SyncJobRecord {
     pub error_text: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct ProjectionSyncResult {
     pub presets_written: usize,
     pub active_preset: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct ProjectionDriftReport {
     pub has_drift: bool,
@@ -80,6 +86,7 @@ pub struct ProjectionDriftReport {
     pub detail: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct SyncRetryWorkerResult {
     pub scanned_jobs: usize,
@@ -88,6 +95,7 @@ pub struct SyncRetryWorkerResult {
     pub failed_jobs: usize,
 }
 
+#[allow(dead_code)]
 const MAX_SYNC_RETRIES: i64 = 3;
 const MIGRATION_BACKUP_RETENTION: usize = 5;
 
@@ -98,6 +106,7 @@ pub struct MigrationBackupResult {
     pub retained_sets: usize,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Default)]
 pub struct MigrationRollbackResult {
     pub restored_backup_dir: String,
@@ -106,6 +115,7 @@ pub struct MigrationRollbackResult {
     pub projection_checksum_verified: bool,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SyncJobStatus {
     Pending,
@@ -114,6 +124,7 @@ pub enum SyncJobStatus {
     Failed,
 }
 
+#[allow(dead_code)]
 impl SyncJobStatus {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -125,6 +136,7 @@ impl SyncJobStatus {
     }
 }
 
+#[allow(dead_code)]
 impl SqlitePersistenceAdapter {
     pub fn new(db: SqliteDatabase) -> Self {
         Self {
@@ -990,6 +1002,7 @@ fn enforce_backup_retention(backup_root: &Path, keep: usize) -> Result<usize> {
     Ok(dirs.len().min(keep))
 }
 
+#[allow(dead_code)]
 fn latest_backup_dir(backup_root: &Path) -> Result<PathBuf> {
     let mut dirs: Vec<(std::time::SystemTime, PathBuf)> = fs::read_dir(backup_root)
         .with_context(|| format!("Failed reading backup root {}", backup_root.display()))?
@@ -1011,6 +1024,7 @@ fn latest_backup_dir(backup_root: &Path) -> Result<PathBuf> {
         .ok_or_else(|| anyhow::anyhow!("No backup checkpoint found at {}", backup_root.display()))
 }
 
+#[allow(dead_code)]
 fn file_checksum_hex(path: &Path) -> Result<String> {
     let bytes = fs::read(path).with_context(|| format!("Failed reading {}", path.display()))?;
     let digest = Sha256::digest(bytes);
@@ -1031,6 +1045,7 @@ fn parse_preset_payload(
     anyhow::bail!("Unsupported preset payload format")
 }
 
+#[allow(dead_code)]
 fn retry_backoff_duration(attempt: i64) -> Option<Duration> {
     match attempt {
         1 => Some(Duration::from_secs(1)),
@@ -1095,6 +1110,7 @@ impl Default for SqlitePersistenceAdapter {
     }
 }
 
+#[allow(dead_code)]
 pub fn tx_payload_from_pairs(pairs: &[(&str, &str)]) -> HashMap<String, String> {
     pairs
         .iter()
