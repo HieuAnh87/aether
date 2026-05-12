@@ -12,13 +12,13 @@ interface NavItemProps {
 
 const NavItem: Component<NavItemProps> = (props) => {
   const baseClass =
-    "flex items-center gap-3 h-11 pl-4 pr-3 rounded-r-md w-full transition-colors duration-150 cursor-pointer select-none";
+    "group flex min-h-11 w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left transition duration-150 ease-out cursor-pointer select-none focus-ring focus:outline-none";
 
   const activeClass =
-    "border-l-[3px] border-primary bg-primary-muted text-text";
+    "border border-[color:var(--color-primary-muted)] bg-[color:var(--color-primary-muted)] text-text shadow-[inset_0_1px_0_var(--color-primary-soft),0_1px_2px_oklch(0.12_0.01_70_/_0.16)]";
 
   const inactiveClass =
-    "border-l-[3px] border-transparent text-text-secondary hover:bg-glass-bg";
+    "border border-transparent text-text-secondary hover:border-border hover:bg-bg-surface hover:text-text";
 
   const stateClass = () => (props.active ? activeClass : inactiveClass);
 
@@ -33,16 +33,16 @@ const NavItem: Component<NavItemProps> = (props) => {
           type="button"
           class={combinedClass()}
           onClick={props.onClick}
+          aria-pressed={props.active}
         >
           <Show when={props.icon}>
             <span
-              class="shrink-0"
-              style={{ width: "20px", height: "20px", display: "flex", "align-items": "center", "justify-content": "center" }}
+              class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-current"
             >
               {props.icon}
             </span>
           </Show>
-          <span class="text-sm font-medium leading-none truncate">
+          <span class="min-w-0 flex-1 truncate text-sm font-medium leading-none">
             {props.label}
           </span>
         </button>
@@ -52,16 +52,16 @@ const NavItem: Component<NavItemProps> = (props) => {
         href={props.href}
         class={combinedClass()}
         onClick={props.onClick}
+        aria-current={props.active ? "page" : undefined}
       >
         <Show when={props.icon}>
           <span
-            class="shrink-0"
-            style={{ width: "20px", height: "20px", display: "flex", "align-items": "center", "justify-content": "center" }}
+            class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-current"
           >
             {props.icon}
           </span>
         </Show>
-        <span class="text-sm font-medium leading-none truncate">
+        <span class="min-w-0 flex-1 truncate text-sm font-medium leading-none">
           {props.label}
         </span>
       </a>

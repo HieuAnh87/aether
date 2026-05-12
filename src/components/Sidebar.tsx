@@ -57,42 +57,43 @@ const Sidebar = (props: SidebarProps) => {
   };
 
   return (
-    <div class="flex h-full w-[220px] flex-col border-r border-border bg-bg-elevated">
-      {/* Logo / App name area with drag region */}
+    <div class="flex h-full min-h-0 w-[230px] flex-col border-r border-border bg-bg-elevated text-text">
       <div
         data-tauri-drag-region
-        class="flex items-center gap-2 pt-8 px-4 pb-5"
+        class="shrink-0 cursor-grab px-3 pt-3 active:cursor-grabbing"
         onMouseDown={handleDragMouseDown}
       >
-        {/* Aether hexagon logo */}
-        <svg width="20" height="20" viewBox="0 0 100 100" fill="none" class="flex-shrink-0">
-          <defs>
-            <linearGradient id="sidebarLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#3B82F6"/>
-              <stop offset="50%" stop-color="#6366F1"/>
-              <stop offset="100%" stop-color="#8B5CF6"/>
-            </linearGradient>
-          </defs>
-          <polygon points="50,8 87,29 87,71 50,92 13,71 13,29"
-            stroke="url(#sidebarLogoGrad)" stroke-width="5" stroke-linejoin="round"/>
-          <path d="M50 8L50 50 M13 29L50 50 M87 29L50 50 M13 71L50 50 M87 71L50 50 M50 92L50 50"
-            stroke="url(#sidebarLogoGrad)" stroke-width="2.5" opacity="0.6"/>
-          <circle cx="50" cy="50" r="10" fill="url(#sidebarLogoGrad)"/>
-        </svg>
-        <span class="text-base font-medium text-text leading-none">Aether</span>
+        <div class="surface-inset flex items-center gap-3 rounded-[18px] border border-border-muted px-3 py-3 shadow-[var(--shadow-surface)]">
+          <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] border border-border bg-bg-surface text-[color:var(--color-primary)] shadow-[inset_0_1px_0_var(--color-primary-soft)]">
+            <svg width="22" height="22" viewBox="0 0 100 100" fill="none" class="flex-shrink-0" aria-hidden="true">
+              <polygon points="50,10 84,30 84,70 50,90 16,70 16,30" stroke="currentColor" stroke-width="6" stroke-linejoin="round" />
+              <circle cx="50" cy="50" r="9" fill="currentColor" />
+            </svg>
+          </div>
+          <div class="min-w-0 flex-1">
+            <div class="font-micro uppercase tracking-[0.14em] text-text-tertiary">Local proxy</div>
+            <div class="truncate text-[15px] font-semibold leading-tight text-text">Aether</div>
+          </div>
+        </div>
       </div>
 
-      {/* Navigation items */}
-      <nav class="flex-1 overflow-y-auto px-2 py-1">
+      <nav class="flex-1 min-h-0 overflow-y-auto overscroll-contain px-2 py-2">
         {props.children}
       </nav>
 
-      {/* Proxy status area */}
-      <div class="border-t border-border p-4">
-        <div class="flex items-center gap-2 text-xs text-text-secondary">
-          {statusDot()}
-          <Show when={props.proxyStatus !== undefined} fallback={<span class="text-text-tertiary">No proxy</span>}>
-            {statusText()}
+      <div class="shrink-0 border-t border-border/80 px-3 pb-4 pt-3">
+        <div class="surface-inset rounded-[16px] border border-border-muted px-3 py-3 shadow-[var(--shadow-surface)]">
+          <div class="flex items-center justify-between gap-3">
+            <span class="font-micro uppercase tracking-[0.14em] text-text-tertiary">Proxy status</span>
+            <div class="flex items-center gap-2 text-xs text-text-secondary">
+              {statusDot()}
+              <Show when={props.proxyStatus !== undefined} fallback={<span class="text-text-tertiary">No proxy</span>}>
+                {statusText()}
+              </Show>
+            </div>
+          </div>
+          <Show when={props.proxyStatus === "running"}>
+            <div class="mt-2 font-mono text-[12px] text-text-tertiary">Ready on localhost:{props.proxyPort ?? 8317}</div>
           </Show>
         </div>
       </div>
