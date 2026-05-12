@@ -23,3 +23,13 @@ dist-ssr
 *.sln
 *.sw?
 .gitnexus
+
+# Agent and local workflow state
+.claude/
+.impeccable/
+.opencode/
+.serena/
+aether/
+
+# Local OpenSpec workspace
+openspec/
