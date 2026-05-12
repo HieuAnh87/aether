@@ -37,10 +37,10 @@
   --color-border-muted: oklch(0.28 0.01 78 / 0.72);
 
   /* === Primary accent === */
-  --color-primary: oklch(0.58 0.13 55);
-  --color-primary-hover: oklch(0.66 0.14 55);
-  --color-primary-muted: oklch(0.58 0.13 55 / 0.16);
-  --color-primary-soft: oklch(0.58 0.13 55 / 0.08);
+  --color-primary: oklch(0.66 0.145 58);
+  --color-primary-hover: oklch(0.71 0.15 58);
+  --color-primary-muted: oklch(0.66 0.145 58 / 0.18);
+  --color-primary-soft: oklch(0.66 0.145 58 / 0.09);
   --color-primary-foreground: oklch(0.17 0.01 78);
   --color-accent: var(--color-primary);
   --color-accent-hover: var(--color-primary-hover);
@@ -109,7 +109,7 @@
   --shadow-panel: 0 14px 34px -26px oklch(0.08 0.01 78 / 0.82), 0 1px 0 oklch(0.95 0.01 88 / 0.04) inset;
   --shadow-floating: 0 20px 48px -30px oklch(0.08 0.01 78 / 0.88), 0 1px 0 oklch(0.95 0.01 88 / 0.05) inset;
   --shadow-glass: var(--shadow-floating);
-  --shadow-focus-ring: 0 0 0 3px oklch(0.58 0.13 55 / 0.24);
+  --shadow-focus-ring: 0 0 0 3px oklch(0.66 0.145 58 / 0.26);
   --shadow-focus-ring-error: 0 0 0 3px oklch(0.63 0.09 27 / 0.22);
 
   --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
@@ -148,10 +148,10 @@
   --color-border-strong: oklch(0.69 0.01 82);
   --color-border-muted: oklch(0.86 0.01 82 / 0.84);
 
-  --color-primary: oklch(0.58 0.13 55);
-  --color-primary-hover: oklch(0.66 0.14 55);
-  --color-primary-muted: oklch(0.58 0.13 55 / 0.12);
-  --color-primary-soft: oklch(0.58 0.13 55 / 0.06);
+  --color-primary: oklch(0.63 0.14 58);
+  --color-primary-hover: oklch(0.58 0.145 58);
+  --color-primary-muted: oklch(0.63 0.14 58 / 0.14);
+  --color-primary-soft: oklch(0.63 0.14 58 / 0.07);
   --color-primary-foreground: oklch(0.18 0.01 72);
 
   --color-success: oklch(0.60 0.07 154);
@@ -173,7 +173,7 @@
   --shadow-panel: 0 14px 30px -24px oklch(0.20 0.01 72 / 0.14), 0 1px 0 oklch(0.99 0.005 88 / 0.38) inset;
   --shadow-floating: 0 18px 40px -28px oklch(0.20 0.01 72 / 0.18), 0 1px 0 oklch(0.99 0.005 88 / 0.40) inset;
   --shadow-glass: var(--shadow-floating);
-  --shadow-focus-ring: 0 0 0 3px oklch(0.58 0.13 55 / 0.20);
+  --shadow-focus-ring: 0 0 0 3px oklch(0.63 0.14 58 / 0.22);
   --shadow-focus-ring-error: 0 0 0 3px oklch(0.56 0.09 27 / 0.18);
 }
 
