@@ -15,23 +15,29 @@ interface AddAccountModalProps {
 }
 
 const AddAccountModal: Component<AddAccountModalProps> = (props) => {
+  const providerOptions = ["anthropic", "openai", "google", "vertexai"] as const;
+
   const [provider, setProvider] = createSignal(props.editProvider || "anthropic");
   const [key, setKey] = createSignal("");
   const [validating, setValidating] = createSignal(false);
   const [validated, setValidated] = createSignal<boolean | null>(null); // null=not yet, true=valid, false=invalid
   const [error, setError] = createSignal("");
   const [saving, setSaving] = createSignal(false);
+  const [statusText, setStatusText] = createSignal("");
 
   // Reset form when modal opens/closes or editProvider changes
   createEffect(() => {
-    if (props.open) {
-      setKey("");
-      setValidated(null);
-      setError("");
-      if (props.editProvider) {
-        setProvider(props.editProvider);
-      }
+    if (!props.open) {
+      return;
     }
+
+    setProvider(props.editProvider ?? "anthropic");
+    setKey("");
+    setValidated(null);
+    setError("");
+    setStatusText("");
+    setValidating(false);
+    setSaving(false);
   });
 
   const handleValidate = async () => {
@@ -39,13 +45,16 @@ const AddAccountModal: Component<AddAccountModalProps> = (props) => {
     setValidating(true);
     setValidated(null);
     setError("");
+    setStatusText("");
     try {
       const valid = await accountStore.validateKey(provider(), key().trim());
       setValidated(valid);
-      if (!valid) setError("API key appears to be invalid");
+      setStatusText(valid ? "Verified with provider." : "You can still save this key.");
+      if (!valid) setError("Couldn’t verify this key.");
     } catch (e: unknown) {
       setValidated(false);
-      setError(String(e));
+      setStatusText("Needs attention");
+      setError(e instanceof Error ? e.message : "Couldn’t verify this key.");
     } finally {
       setValidating(false);
     }
@@ -55,16 +64,19 @@ const AddAccountModal: Component<AddAccountModalProps> = (props) => {
     if (!key().trim()) return;
     setSaving(true);
     setError("");
+    setStatusText("");
     try {
       // Auto-validate before saving (failure still proceeds)
       setValidating(true);
       try {
         const valid = await accountStore.validateKey(provider(), key().trim());
         setValidated(valid);
-        if (!valid) setError("API key appears to be invalid — saved anyway");
+        setStatusText(valid ? "Saved to Keychain." : "Saved to Keychain, not verified.");
+        if (!valid) setError("Saved, not verified.");
       } catch {
-        // Validation network error — still save the key
+        // Validation network error. Still save the key.
         setValidated(null);
+        setStatusText("Saved to Keychain. Validation was skipped.");
       } finally {
         setValidating(false);
       }
@@ -85,36 +97,48 @@ const AddAccountModal: Component<AddAccountModalProps> = (props) => {
 
   const selectedMeta = () => accountStore.getProviderMeta(provider());
 
+  const saveLabel = () => (props.editProvider ? "Update key" : "Save key");
+
   return (
     <Modal
       open={props.open}
       onClose={props.onClose}
-      title={props.editProvider ? `Update ${selectedMeta().name} API Key` : "Add Provider Account"}
-      size="md"
+      title={props.editProvider ? `Update ${selectedMeta().name} key` : "Add key"}
+      size="lg"
     >
-      <div class="space-y-4">
+      <div class="space-y-5">
+        <div class="rounded-lg border border-border/80 bg-bg-elevated px-4 py-3">
+          <p class="font-body text-text">Keys stay in macOS Keychain.</p>
+          <p class="mt-1 font-caption text-text-muted">
+            {props.editProvider
+              ? "Update the saved key or validate it before you switch models."
+              : "Pick a provider, paste the key, and validate it if you want a quick check."}
+          </p>
+        </div>
+
         {/* Provider selector - only show if not editing existing */}
         <Show when={!props.editProvider}>
           <div>
-            <label class="mb-1 block font-caption text-text-secondary">Provider</label>
-            <div class="flex gap-2">
-              <For each={["anthropic", "openai", "google", "vertexai"] as const}>
+            <label class="mb-2 block font-caption text-text-secondary">Provider</label>
+            <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <For each={providerOptions}>
                 {(p) => {
                   const meta = accountStore.getProviderMeta(p);
+                  const selected = () => provider() === p;
+
                   return (
                     <button
-                      class={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
-                        provider() === p
-                          ? "bg-glass-bg border border-primary text-text"
-                          : "border border-border text-text-secondary hover:border-text-muted"
+                      type="button"
+                      aria-pressed={selected()}
+                      class={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors focus-ring ${
+                        selected()
+                          ? "border-primary bg-primary-soft text-text"
+                          : "border-border bg-bg-surface text-text-secondary hover:border-border-hover hover:bg-bg-surface-hover"
                       }`}
                       onClick={() => setProvider(p)}
                     >
-                      <span
-                        class="inline-block h-3 w-3 rounded-full"
-                        style={{ "background-color": meta.color }}
-                      />
-                      {meta.name}
+                      <img src={meta.logo} alt="" aria-hidden="true" class="h-4 w-4 object-contain" />
+                      <span class="truncate">{meta.name}</span>
                     </button>
                   );
                 }}
@@ -125,36 +149,49 @@ const AddAccountModal: Component<AddAccountModalProps> = (props) => {
 
         {/* API Key input */}
         <Input
-          label="API Key"
+          id="provider-key"
+          label="Key"
           type="password"
           value={key()}
           onInput={(val: string) => {
             setKey(val);
             setValidated(null);
+            setStatusText("");
+            setError("");
           }}
-          placeholder={`Enter your ${selectedMeta().name} API key`}
+          placeholder={`Paste the ${selectedMeta().name} key`}
           error={error()}
         />
 
         {/* Validation status */}
-        <Show when={validated() !== null}>
-          <div class="flex items-center gap-2">
-            <Show when={validated() === true}>
-              <Badge variant="active">✓ Key verified</Badge>
+        <Show when={validated() !== null || validating() || statusText()}>
+          <div class="flex flex-wrap items-center gap-2">
+            <Show when={validating()}>
+              <Badge variant="neutral">Validating…</Badge>
             </Show>
-            <Show when={validated() === false}>
-              <Badge variant="warning">Key unverified — you can still save it</Badge>
+            <Show when={validated() === true && !validating()}>
+              <Badge variant="active">Ready</Badge>
+            </Show>
+            <Show when={validated() === false && !validating()}>
+              <Badge variant="warning">Needs attention</Badge>
+            </Show>
+            <Show when={statusText()}>
+              <span class="font-caption text-text-muted">{statusText()}</span>
             </Show>
           </div>
         </Show>
 
         {/* Actions */}
         <div class="flex justify-end gap-2 pt-2">
-          <Button variant="ghost" onClick={handleValidate} disabled={!key().trim() || validating()}>
-            {validating() ? "Validating..." : "Validate"}
+          <Button
+            variant="ghost"
+            onClick={handleValidate}
+            disabled={!key().trim() || validating() || saving()}
+          >
+            {validating() ? "Validating…" : "Validate"}
           </Button>
-          <Button variant="primary" onClick={handleSave} disabled={!key().trim() || saving()}>
-            {saving() ? "Saving..." : "Save"}
+          <Button variant="primary" onClick={handleSave} disabled={!key().trim() || saving() || validating()}>
+            {saving() ? "Saving…" : saveLabel()}
           </Button>
         </div>
       </div>
