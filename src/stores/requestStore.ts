@@ -64,7 +64,12 @@ const filteredRequests = createMemo(() => {
 
   const query = searchQuery().trim().toLowerCase();
   if (query) {
-    result = result.filter((r) => r.endpoint.toLowerCase().includes(query));
+    result = result.filter((r) => {
+      const haystack = [r.endpoint, r.method, r.provider, r.statusCode?.toString() ?? "", r.id]
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
   }
 
   return result;
@@ -138,6 +143,8 @@ function clearRequests() {
 
 async function startStream() {
   try {
+    setStreamError(null);
+    setStreamConnected(false);
     await invokeCompat<void>("start_event_stream");
   } catch (e) {
     setStreamConnected(false);

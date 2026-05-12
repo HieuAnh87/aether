@@ -7,29 +7,41 @@ interface BadgeProps {
 }
 
 const Badge = (props: BadgeProps) => {
+  const providerTone = () => {
+    switch (props.variant) {
+      case "anthropic":
+        return "border border-anthropic/20 bg-bg-elevated text-anthropic";
+      case "openai":
+        return "border border-openai/20 bg-bg-elevated text-openai";
+      case "google":
+        return "border border-google/20 bg-bg-elevated text-google";
+      case "vertexai":
+        return "border border-vertexai/20 bg-bg-elevated text-vertexai";
+      default:
+        return "";
+    }
+  };
+
   const variantClasses = () => {
     switch (props.variant ?? "neutral") {
       case "active":
-        return "bg-primary/20 text-primary";
+        return "chip-active";
       case "warning":
-        return "bg-warning/20 text-warning";
+        return "status-warning";
       case "error":
-        return "bg-error/20 text-error";
+        return "status-error";
       case "neutral":
-        return "bg-glass-bg text-text-secondary";
+        return "chip-muted";
       case "anthropic":
-        return "bg-anthropic/20 text-anthropic";
       case "openai":
-        return "bg-openai/20 text-openai";
       case "google":
-        return "bg-google/20 text-google";
       case "vertexai":
-        return "bg-vertexai/20 text-vertexai";
+        return providerTone();
     }
   };
 
   return (
-    <span class={`inline-flex items-center rounded px-2 py-0.5 font-micro ${variantClasses()} ${props.class ?? ""}`}>
+    <span class={`chip ${variantClasses()} ${props.class ?? ""}`}>
       {props.children}
     </span>
   );

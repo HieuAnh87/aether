@@ -1,4 +1,4 @@
-import { createSignal, For, Show } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
 import { Badge, Button } from "../components";
 import {
   presetStore,
@@ -39,6 +39,12 @@ const EditPresetForm = (props: EditPresetFormProps) => {
 
   const [localModels, setLocalModels] = createSignal<LocalAgents>(initialModels());
   const [saving, setSaving] = createSignal(false);
+
+  createEffect(() => {
+    const presetName = props.preset.name;
+    void presetName;
+    setLocalModels(initialModels());
+  });
 
   const handleSelect = (role: string, value: string) => {
     setLocalModels((prev) => ({

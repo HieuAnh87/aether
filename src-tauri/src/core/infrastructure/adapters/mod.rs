@@ -4,45 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tempfile::NamedTempFile;
 
-use crate::core::domain::ports::{
-    DomainEvent, EventPublisher, PersistencePort, PersistenceTransaction, ProjectionWriteRequest,
-    ProjectionWriter, SecretPort, SecretReference, SidecarCommand, SidecarManagementPort,
-};
-
-#[derive(Debug, Default, Clone)]
-pub struct NoopPersistenceAdapter;
-
-impl PersistencePort for NoopPersistenceAdapter {
-    fn execute(&self, _transaction: PersistenceTransaction) -> Result<()> {
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct NoopSecretAdapter;
-
-impl SecretPort for NoopSecretAdapter {
-    fn read_secret(&self, _reference: &SecretReference) -> Result<Option<String>> {
-        Ok(None)
-    }
-
-    fn write_secret(&self, _reference: &SecretReference, _value: &str) -> Result<()> {
-        Ok(())
-    }
-
-    fn delete_secret(&self, _reference: &SecretReference) -> Result<()> {
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct NoopProjectionWriter;
-
-impl ProjectionWriter for NoopProjectionWriter {
-    fn write_projection(&self, _request: ProjectionWriteRequest) -> Result<()> {
-        Ok(())
-    }
-}
+use crate::core::domain::ports::{ProjectionWriteRequest, ProjectionWriter};
 
 #[derive(Debug, Default, Clone)]
 pub struct AtomicProjectionWriter;
@@ -119,23 +81,5 @@ fn resolve_projection_target(raw_target: &str) -> Result<PathBuf> {
             "Projection target '{}' must be absolute or start with '~/'.",
             raw_target
         ))
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct NoopSidecarManagementAdapter;
-
-impl SidecarManagementPort for NoopSidecarManagementAdapter {
-    fn execute_command(&self, _command: SidecarCommand) -> Result<()> {
-        Ok(())
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct NoopEventPublisher;
-
-impl EventPublisher for NoopEventPublisher {
-    fn publish(&self, _event: DomainEvent) -> Result<()> {
-        Ok(())
     }
 }

@@ -44,24 +44,21 @@ const Modal = (props: ModalProps) => {
   return (
     <Portal mount={document.body}>
       <Show when={props.open}>
-        {/* Overlay */}
         <div
-          class="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity duration-200"
+          class="fixed inset-0 z-40 flex items-center justify-center bg-[color:var(--color-overlay)] transition-opacity duration-200"
           onClick={handleOverlayClick}
         >
-          {/* Modal box */}
           <div
-            class={`glass relative w-full rounded-xl shadow-glass transition-all duration-200 ${sizeClass()} ${props.class ?? ""}`}
+            class={`surface-raised relative w-full rounded-xl transition-all duration-200 ${sizeClass()} ${props.class ?? ""}`}
             style={{ margin: "1rem" }}
           >
-            {/* Header */}
             <Show when={props.title !== undefined}>
-              <div class="flex items-center justify-between border-b border-border px-6 py-4">
-                <span class="text-base font-medium text-text">{props.title}</span>
+              <div class="flex items-center justify-between border-b border-border/80 px-6 py-4">
+                <span class="font-section-header text-text">{props.title}</span>
                 <button
                   type="button"
                   onClick={props.onClose}
-                  class="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary transition-colors duration-150 hover:bg-glass-bg hover:text-text focus:outline-none"
+                  class="flex h-7 w-7 items-center justify-center rounded-md text-text-secondary transition-colors duration-150 hover:bg-primary-soft hover:text-text focus-ring"
                   aria-label="Close modal"
                 >
                   <svg
@@ -83,7 +80,6 @@ const Modal = (props: ModalProps) => {
               </div>
             </Show>
 
-            {/* Body */}
             <div class="p-6">
               {props.children}
             </div>

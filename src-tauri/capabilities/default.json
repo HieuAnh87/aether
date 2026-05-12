@@ -9,11 +9,6 @@
   "permissions": [
     "core:default",
     "core:window:allow-start-dragging",
-    "shell:allow-execute",
-    "shell:allow-spawn",
-    "shell:allow-stdin-write",
-    "shell:allow-kill",
-    "shell:allow-open",
     "core:tray:default",
     "core:tray:allow-new",
     "core:tray:allow-set-icon",

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use anyhow::Result;
-use serde_json::json;
 use tauri::AppHandle;
 
 use crate::config::{self, AgentConfig, PresetInfo};
@@ -130,20 +129,4 @@ impl CommandTransitionService {
         self.record_mutation(operation, kv)
     }
 
-    pub fn record_provider_validation(
-        &self,
-        provider: &str,
-        valid: bool,
-        http_status: Option<u16>,
-    ) -> Result<()> {
-        let payload = json!({
-            "provider": provider,
-            "valid": valid,
-            "httpStatus": http_status,
-        });
-        self.persistence.execute(PersistenceTransaction {
-            operation: "validate_api_key".to_string(),
-            payload: HashMap::from([("payload".to_string(), payload.to_string())]),
-        })
-    }
 }

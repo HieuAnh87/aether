@@ -14,15 +14,14 @@ interface InputProps {
 }
 
 const Input: Component<InputProps> = (props) => {
+  const errorId = () => (props.id ? `${props.id}-error` : undefined);
+
   const inputClass = () =>
     [
-      "h-9 w-full rounded-md px-3",
-      "bg-glass-bg border border-border",
-      "text-base text-text placeholder:text-text-tertiary",
-      "focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary",
-      "transition-colors duration-150",
-      props.disabled ? "opacity-50 cursor-not-allowed" : "",
-      props.error ? "border-error focus:border-error focus:ring-error" : "",
+      "field h-9 px-3 text-sm font-body",
+      "focus-ring",
+      props.error ? "border-error/70 focus:border-error" : "",
+      props.disabled ? "cursor-not-allowed" : "",
       props.class ?? "",
     ]
       .filter(Boolean)
@@ -35,12 +34,13 @@ const Input: Component<InputProps> = (props) => {
       value={props.value ?? ""}
       placeholder={props.placeholder}
       disabled={props.disabled}
+      aria-invalid={props.error ? "true" : undefined}
+      aria-describedby={errorId()}
       class={inputClass()}
       onInput={(e) => props.onInput?.(e.currentTarget.value)}
     />
   );
 
-  // If no label or error, return the raw input
   return (
     <Show
       when={props.label || props.error}
@@ -50,14 +50,16 @@ const Input: Component<InputProps> = (props) => {
         <Show when={props.label}>
           <label
             for={props.id}
-            class="text-xs text-text-secondary font-medium"
+            class="font-caption text-text-secondary"
           >
             {props.label}
           </label>
         </Show>
         {inputEl}
         <Show when={props.error}>
-          <p class="text-xs text-error">{props.error}</p>
+          <p id={errorId()} class="font-caption text-error">
+            {props.error}
+          </p>
         </Show>
       </div>
     </Show>

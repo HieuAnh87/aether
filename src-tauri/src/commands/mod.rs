@@ -2,7 +2,7 @@ pub mod agent_providers;
 pub mod agents;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::Manager;
@@ -124,11 +124,36 @@ pub fn get_model_variants() -> Result<HashMap<String, Vec<String>>, String> {
 // File I/O for import/export
 // ---------------------------------------------------------------------------
 
+const MAX_IMPORT_EXPORT_BYTES: u64 = 5 * 1024 * 1024; // 5 MiB safety cap
+
+fn validate_import_export_path(raw: &str) -> Result<PathBuf, String> {
+    if raw.trim().is_empty() {
+        return Err("Path must not be empty".to_string());
+    }
+
+    let path = PathBuf::from(raw);
+    if !path.is_absolute() {
+        return Err("Path must be absolute".to_string());
+    }
+
+    if path.extension().and_then(|e| e.to_str()) != Some("json") {
+        return Err("Only .json files are allowed for import/export".to_string());
+    }
+
+    Ok(path)
+}
+
 #[tauri::command]
 pub fn write_file(path: String, content: String) -> Result<V2CommandEnvelope<()>, String> {
+    let validated = validate_import_export_path(&path)?;
+    let target = validated
+        .to_str()
+        .ok_or("Path contains unsupported characters")?
+        .to_string();
+
     AtomicProjectionWriter
         .write_projection(ProjectionWriteRequest {
-            target: path,
+            target,
             content,
         })
         .map_err(|e| format!("Failed to write file: {}", e))?;
@@ -137,7 +162,22 @@ pub fn write_file(path: String, content: String) -> Result<V2CommandEnvelope<()>
 
 #[tauri::command]
 pub fn read_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(PathBuf::from(&path))
+    let validated = validate_import_export_path(&path)?;
+
+    let metadata = std::fs::metadata(&validated)
+        .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+    if !metadata.is_file() {
+        return Err("Path is not a file".to_string());
+    }
+    if metadata.len() > MAX_IMPORT_EXPORT_BYTES {
+        return Err(format!(
+            "File too large ({} bytes). Max allowed is {} bytes",
+            metadata.len(),
+            MAX_IMPORT_EXPORT_BYTES
+        ));
+    }
+
+    std::fs::read_to_string(Path::new(&validated))
         .map_err(|e| format!("Failed to read file: {}", e))
 }
 

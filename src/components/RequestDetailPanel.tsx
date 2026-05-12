@@ -2,7 +2,7 @@ import type { Component, JSX } from "solid-js";
 import { Show, createSignal } from "solid-js";
 import { requestStore } from "../stores/requestStore";
 
-const TRUNCATE_LEN = 2000;
+const TRUNCATE_LEN = 2400;
 
 function truncate(text: string): { value: string; truncated: boolean } {
   if (text.length <= TRUNCATE_LEN) return { value: text, truncated: false };
@@ -14,39 +14,62 @@ function formatHeaders(headers?: Record<string, unknown>): string {
   return JSON.stringify(headers, null, 2);
 }
 
-function getStatusDotClass(statusCode?: number): string {
-  if (!statusCode) return "bg-border";
-  if (statusCode >= 200 && statusCode < 300) return "bg-green-500";
-  if (statusCode >= 400 && statusCode < 500) return "bg-amber-500";
-  if (statusCode >= 500) return "bg-red-500";
-  return "bg-border";
-}
-
 interface SectionProps {
   title: string;
   children: JSX.Element;
+  defaultOpen?: boolean;
 }
 
 const Section: Component<SectionProps> = (props) => {
-  const [open, setOpen] = createSignal(true);
+  const [open, setOpen] = createSignal(props.defaultOpen ?? false);
 
   return (
-    <div class="border-b border-border last:border-b-0">
+    <section class="border-b border-border last:border-b-0">
       <button
-        class="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-bg-elevated transition-colors"
+        type="button"
+        aria-expanded={open()}
+        class="flex w-full items-center justify-between px-4 py-2.5 text-left transition-colors hover:bg-bg-elevated focus-visible:bg-bg-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-amber-500/25"
         onClick={() => setOpen((v) => !v)}
       >
-        <span class="font-caption font-medium text-text-secondary text-xs uppercase tracking-wide">
+        <span class="font-caption text-[10px] font-medium uppercase tracking-[0.16em] text-text-tertiary">
           {props.title}
         </span>
-        <span class="text-text-muted text-xs">{open() ? "▾" : "▸"}</span>
+        <span class="text-[11px] text-text-muted">{open() ? "−" : "+"}</span>
       </button>
       <Show when={open()}>
         <div class="px-4 pb-3">{props.children}</div>
       </Show>
-    </div>
+    </section>
   );
 };
+
+function formatTimestamp(timestamp: string): string {
+  return new Date(timestamp).toLocaleTimeString("en-US", { hour12: false });
+}
+
+function formatLatency(latencyMs?: number): string {
+  return latencyMs != null ? `${latencyMs} ms` : "Not finished";
+}
+
+function formatTokens(tokensUsed?: number): string {
+  return tokensUsed != null ? tokensUsed.toLocaleString() : "Not available";
+}
+
+function statusTone(statusCode?: number): string {
+  if (!statusCode) return "border-border bg-bg-elevated text-text-muted";
+  if (statusCode >= 200 && statusCode < 300) return "border-emerald-500/20 bg-emerald-500/10 text-emerald-100";
+  if (statusCode >= 400 && statusCode < 500) return "border-amber-500/20 bg-amber-500/10 text-amber-100";
+  if (statusCode >= 500) return "border-rose-500/20 bg-rose-500/10 text-rose-100";
+  return "border-border bg-bg-elevated text-text-muted";
+}
+
+function statusDot(statusCode?: number): string {
+  if (!statusCode) return "bg-border";
+  if (statusCode >= 200 && statusCode < 300) return "bg-emerald-400";
+  if (statusCode >= 400 && statusCode < 500) return "bg-amber-400";
+  if (statusCode >= 500) return "bg-rose-400";
+  return "bg-border";
+}
 
 const RequestDetailPanel: Component = () => {
   const req = () => requestStore.selectedRequest();
@@ -66,92 +89,87 @@ const RequestDetailPanel: Component = () => {
         };
 
         return (
-          <div class="flex flex-col h-full glass border-l border-border overflow-hidden">
-            {/* Header */}
-            <div class="flex items-start justify-between gap-2 px-4 py-3 border-b border-border bg-bg-elevated shrink-0">
-              <div class="flex flex-col gap-1 min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="font-mono font-caption font-medium text-text uppercase text-xs">
-                    {request().method}
-                  </span>
-                  <Show when={request().statusCode}>
-                    <div class="flex items-center gap-1">
-                      <span
-                        class={`inline-block w-2 h-2 rounded-full ${getStatusDotClass(request().statusCode)}`}
-                      />
-                      <span class="font-caption text-text-secondary text-xs">
+          <div class="flex h-full min-h-0 flex-col overflow-hidden border-l border-border bg-bg-surface">
+            <div class="shrink-0 border-b border-border bg-bg-elevated px-4 py-4">
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0 space-y-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center rounded-full border border-border bg-bg-surface px-2.5 py-1 font-mono text-[11px] font-medium uppercase tracking-[0.08em] text-text">
+                      {request().method}
+                    </span>
+                    <Show when={request().statusCode}>
+                      <span class={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-caption text-[11px] font-medium ${statusTone(request().statusCode)}`}>
+                        <span class={`h-2 w-2 rounded-full ${statusDot(request().statusCode)}`} aria-hidden="true" />
                         {request().statusCode}
                       </span>
-                    </div>
-                  </Show>
-                  <Show when={request().inFlight}>
-                    <span class="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                  </Show>
+                    </Show>
+                    <Show when={request().inFlight}>
+                      <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 font-caption text-[11px] font-medium text-amber-100">
+                        <span class="h-2 w-2 animate-pulse rounded-full bg-amber-400" aria-hidden="true" />
+                        Sending
+                      </span>
+                    </Show>
+                  </div>
+
+                  <div class="min-w-0">
+                    <p class="truncate font-body text-[13px] text-text" title={request().endpoint}>
+                      {request().endpoint}
+                    </p>
+                    <p class="mt-1 font-caption text-[11px] text-text-muted">
+                      {request().provider} · {formatTimestamp(request().timestamp)}
+                    </p>
+                  </div>
                 </div>
-                <p class="font-caption text-text text-xs truncate max-w-[220px]" title={request().endpoint}>
-                  {request().endpoint}
-                </p>
+
+                <button
+                  type="button"
+                  aria-label="Close request details"
+                  class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border bg-transparent text-text-muted transition-colors hover:border-border-hover hover:bg-bg-surface hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0"
+                  onClick={() => requestStore.selectRequest(null)}
+                >
+                  ×
+                </button>
               </div>
-              <button
-                class="shrink-0 w-6 h-6 flex items-center justify-center rounded text-text-muted hover:text-text hover:bg-bg-elevated transition-colors"
-                onClick={() => requestStore.selectRequest(null)}
-                title="Close"
-              >
-                ✕
-              </button>
             </div>
 
-            {/* Scrollable body */}
-            <div class="flex-1 overflow-y-auto">
-              {/* Stats */}
-              <Section title="Stats">
-                <div class="flex flex-col gap-1.5">
-                  <div class="flex items-center justify-between">
-                    <span class="font-micro text-text-muted">Latency</span>
-                    <span class="font-mono font-micro text-text">
-                      {request().latencyMs != null ? `${request().latencyMs}ms` : "—"}
-                    </span>
+            <div class="min-h-0 flex-1 overflow-y-auto">
+              <Section title="Overview" defaultOpen>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="rounded-lg border border-border bg-bg-elevated px-3 py-2.5">
+                    <p class="font-caption text-[10px] uppercase tracking-[0.14em] text-text-tertiary">Latency</p>
+                    <p class="mt-1 font-mono text-[12px] tabular-nums text-text">{formatLatency(request().latencyMs)}</p>
                   </div>
-                  <div class="flex items-center justify-between">
-                    <span class="font-micro text-text-muted">Tokens used</span>
-                    <span class="font-mono font-micro text-text">
-                      {request().tokensUsed != null ? request().tokensUsed!.toLocaleString() : "—"}
-                    </span>
+                  <div class="rounded-lg border border-border bg-bg-elevated px-3 py-2.5">
+                    <p class="font-caption text-[10px] uppercase tracking-[0.14em] text-text-tertiary">Tokens</p>
+                    <p class="mt-1 font-mono text-[12px] tabular-nums text-text">{formatTokens(request().tokensUsed)}</p>
                   </div>
-                  <div class="flex items-center justify-between">
-                    <span class="font-micro text-text-muted">Provider</span>
-                    <span class="font-micro text-text capitalize">{request().provider}</span>
+                  <div class="rounded-lg border border-border bg-bg-elevated px-3 py-2.5">
+                    <p class="font-caption text-[10px] uppercase tracking-[0.14em] text-text-tertiary">Status</p>
+                    <p class="mt-1 font-caption text-[12px] text-text capitalize">{request().statusCode ? `${request().statusCode}` : "Pending"}</p>
                   </div>
-                  <div class="flex items-center justify-between">
-                    <span class="font-micro text-text-muted">Time</span>
-                    <span class="font-mono font-micro text-text">
-                      {new Date(request().timestamp).toLocaleTimeString("en-US", { hour12: false })}
-                    </span>
+                  <div class="rounded-lg border border-border bg-bg-elevated px-3 py-2.5">
+                    <p class="font-caption text-[10px] uppercase tracking-[0.14em] text-text-tertiary">Provider</p>
+                    <p class="mt-1 font-caption text-[12px] text-text capitalize">{request().provider}</p>
                   </div>
                 </div>
               </Section>
 
-              {/* Request Headers */}
-              <Section title="Request Headers">
-                <pre class="font-mono text-[10px] text-text-secondary whitespace-pre-wrap break-all leading-relaxed">
+              <Section title="Request headers">
+                <pre class="max-h-64 overflow-auto rounded-lg border border-border bg-bg-elevated px-3 py-2 font-mono text-[11px] leading-5 text-text-secondary whitespace-pre-wrap break-words">
                   {formatHeaders(request().requestHeaders)}
                 </pre>
               </Section>
 
-              {/* Request Body */}
-              <Section title="Request Body">
-                <Show
-                  when={reqBody()}
-                  fallback={<p class="font-caption text-text-muted text-xs">(empty)</p>}
-                >
+              <Section title="Request body">
+                <Show when={reqBody()} fallback={<p class="font-caption text-[12px] text-text-muted">No request body</p>}>
                   {(body) => (
                     <>
-                      <pre class="font-mono text-[10px] text-text-secondary whitespace-pre-wrap break-all leading-relaxed">
+                      <pre class="max-h-72 overflow-auto rounded-lg border border-border bg-bg-elevated px-3 py-2 font-mono text-[11px] leading-5 text-text-secondary whitespace-pre-wrap break-words">
                         {body().value}
                       </pre>
                       <Show when={body().truncated}>
-                        <p class="mt-1 font-micro text-amber-500 text-[10px]">
-                          — truncated at {TRUNCATE_LEN} chars —
+                        <p class="mt-2 font-caption text-[11px] text-amber-200">
+                          Truncated at {TRUNCATE_LEN} chars
                         </p>
                       </Show>
                     </>
@@ -159,27 +177,22 @@ const RequestDetailPanel: Component = () => {
                 </Show>
               </Section>
 
-              {/* Response Headers */}
-              <Section title="Response Headers">
-                <pre class="font-mono text-[10px] text-text-secondary whitespace-pre-wrap break-all leading-relaxed">
+              <Section title="Response headers">
+                <pre class="max-h-64 overflow-auto rounded-lg border border-border bg-bg-elevated px-3 py-2 font-mono text-[11px] leading-5 text-text-secondary whitespace-pre-wrap break-words">
                   {formatHeaders(request().responseHeaders)}
                 </pre>
               </Section>
 
-              {/* Response Body */}
-              <Section title="Response Body">
-                <Show
-                  when={resBody()}
-                  fallback={<p class="font-caption text-text-muted text-xs">(empty)</p>}
-                >
+              <Section title="Response body">
+                <Show when={resBody()} fallback={<p class="font-caption text-[12px] text-text-muted">No response body</p>}>
                   {(body) => (
                     <>
-                      <pre class="font-mono text-[10px] text-text-secondary whitespace-pre-wrap break-all leading-relaxed">
+                      <pre class="max-h-72 overflow-auto rounded-lg border border-border bg-bg-elevated px-3 py-2 font-mono text-[11px] leading-5 text-text-secondary whitespace-pre-wrap break-words">
                         {body().value}
                       </pre>
                       <Show when={body().truncated}>
-                        <p class="mt-1 font-micro text-amber-500 text-[10px]">
-                          — truncated at {TRUNCATE_LEN} chars —
+                        <p class="mt-2 font-caption text-[11px] text-amber-200">
+                          Truncated at {TRUNCATE_LEN} chars
                         </p>
                       </Show>
                     </>

@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { For } from "solid-js";
+import { For, Show } from "solid-js";
 import { requestStore, type FilterStatus } from "../stores/requestStore";
 const STATUS_OPTIONS: { label: string; value: FilterStatus }[] = [
   { label: "All", value: "all" },
@@ -11,60 +11,107 @@ const RequestFilterBar: Component = () => {
   const activeProvider = () => requestStore.filterProvider();
   const activeStatus = () => requestStore.filterStatus();
   const query = () => requestStore.searchQuery();
+  const hasActiveFilters = () => activeProvider() !== null || activeStatus() !== "all" || query().trim().length > 0;
 
-  const chipBase = "inline-flex items-center px-3 py-1 rounded-full font-caption text-xs font-medium transition-colors cursor-pointer border";
-  const chipActive = "bg-primary text-white border-primary";
-  const chipInactive = "bg-transparent text-text-secondary border-border hover:bg-bg-elevated";
+  const chipBase =
+    "inline-flex items-center rounded-full border px-3 py-1.5 font-caption text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0";
+  const chipActive = "border-amber-500/25 bg-amber-500/10 text-text";
+  const chipInactive = "border-border bg-transparent text-text-secondary hover:border-border-hover hover:bg-bg-elevated hover:text-text";
 
   return (
-    <div class="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-border bg-bg-elevated">
-      {/* Provider filter */}
-      <div class="flex items-center gap-1.5">
-        <button
-          class={`${chipBase} ${activeProvider() === null ? chipActive : chipInactive}`}
-          onClick={() => requestStore.setFilterProvider(null)}
-        >
-          All
-        </button>
-        <For each={requestStore.providers()}>
-          {(provider) => (
+    <div class="border-b border-border bg-bg-surface px-5 py-3">
+      <div class="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+        <div class="min-w-0 flex-1 space-y-3">
+          <div class="flex flex-wrap gap-3">
+            <div class="min-w-0">
+              <p class="mb-2 font-caption text-[10px] uppercase tracking-[0.16em] text-text-tertiary">Provider</p>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  aria-pressed={activeProvider() === null}
+                  aria-label="Filter requests by all providers"
+                  class={`${chipBase} ${activeProvider() === null ? chipActive : chipInactive}`}
+                  onClick={() => requestStore.setFilterProvider(null)}
+                >
+                  All
+                </button>
+                <For each={requestStore.providers()}>
+                  {(provider) => (
+                    <button
+                      type="button"
+                      aria-pressed={activeProvider() === provider}
+                      aria-label={`Filter requests by ${provider}`}
+                      class={`${chipBase} ${activeProvider() === provider ? chipActive : chipInactive}`}
+                      onClick={() => requestStore.setFilterProvider(provider)}
+                    >
+                      {provider.charAt(0).toUpperCase() + provider.slice(1)}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+
+            <div class="min-w-0">
+              <p class="mb-2 font-caption text-[10px] uppercase tracking-[0.16em] text-text-tertiary">Result</p>
+              <div class="flex flex-wrap gap-2">
+                <For each={STATUS_OPTIONS}>
+                  {({ label, value }) => (
+                    <button
+                      type="button"
+                      aria-pressed={activeStatus() === value}
+                      aria-label={`Show ${label.toLowerCase()} requests`}
+                      class={`${chipBase} ${activeStatus() === value ? chipActive : chipInactive}`}
+                      onClick={() => requestStore.setFilterStatus(value)}
+                    >
+                      {label}
+                    </button>
+                  )}
+                </For>
+              </div>
+            </div>
+          </div>
+
+          <label class="block min-w-0 max-w-2xl">
+            <span class="mb-2 block font-caption text-[10px] uppercase tracking-[0.16em] text-text-tertiary">Search</span>
+            <div class="relative">
+              <input
+                type="search"
+                value={query()}
+                placeholder="Search endpoint, method, provider"
+                aria-label="Search requests by endpoint, method, or provider"
+                class="w-full rounded-md border border-border bg-bg-elevated px-3 py-2 pr-10 font-caption text-[12px] text-text placeholder:text-text-muted transition-colors focus:border-amber-500/40 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:ring-offset-0"
+                onInput={(e) => requestStore.setSearchQuery(e.currentTarget.value)}
+              />
+              <Show when={query().length > 0}>
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  class="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md px-2 py-1 font-caption text-[11px] text-text-muted transition-colors hover:bg-bg-surface hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0"
+                  onClick={() => requestStore.setSearchQuery("")}
+                >
+                  Clear
+                </button>
+              </Show>
+            </div>
+          </label>
+        </div>
+
+        <Show when={hasActiveFilters()}>
+          <div class="flex items-center gap-2 rounded-md border border-border bg-bg-elevated px-3 py-2">
+            <p class="font-caption text-[11px] text-text-muted">Filtered</p>
             <button
-              class={`${chipBase} ${activeProvider() === provider ? chipActive : chipInactive} capitalize`}
-              onClick={() => requestStore.setFilterProvider(provider)}
+              type="button"
+              class="rounded-md border border-border bg-transparent px-2.5 py-1 font-caption text-[11px] font-medium text-text-secondary transition-colors hover:border-amber-500/30 hover:bg-amber-500/10 hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/30 focus-visible:ring-offset-0"
+              onClick={() => {
+                requestStore.setFilterProvider(null);
+                requestStore.setFilterStatus("all");
+                requestStore.setSearchQuery("");
+              }}
             >
-              {provider.charAt(0).toUpperCase() + provider.slice(1)}
+              Reset
             </button>
-          )}
-        </For>
-      </div>
-
-      {/* Divider */}
-      <div class="w-px h-5 bg-border" />
-
-      {/* Status filter */}
-      <div class="flex items-center gap-1.5">
-        {STATUS_OPTIONS.map(({ label, value }) => (
-          <button
-            class={`${chipBase} ${activeStatus() === value ? chipActive : chipInactive}`}
-            onClick={() => requestStore.setFilterStatus(value)}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Divider */}
-      <div class="w-px h-5 bg-border" />
-
-      {/* Search */}
-      <div class="flex-1 min-w-[160px] max-w-xs">
-        <input
-          type="text"
-          value={query()}
-          placeholder="Search endpoints..."
-          class="w-full h-7 px-3 rounded-md bg-glass-bg border border-border text-xs text-text placeholder:text-text-muted focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary transition-colors"
-          onInput={(e) => requestStore.setSearchQuery(e.currentTarget.value)}
-        />
+          </div>
+        </Show>
       </div>
     </div>
   );

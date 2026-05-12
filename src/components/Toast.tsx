@@ -30,18 +30,28 @@ export function useToast() {
   return useContext(ToastContext)!;
 }
 
-// Border color per type
-function borderClass(type: ToastItem["type"]): string {
+function indicatorClasses(type: ToastItem["type"]): string {
   switch (type) {
     case "success":
-      return "border-l-4 border-success";
+      return "status-success";
     case "error":
-      return "border-l-4 border-error";
+      return "status-error";
     case "info":
-      return "border-l-4 border-primary";
+      return "status-info";
   }
 }
-// Provider
+
+function ringClasses(type: ToastItem["type"]): string {
+  switch (type) {
+    case "success":
+      return "ring-1 ring-success/12";
+    case "error":
+      return "ring-1 ring-error/12";
+    case "info":
+      return "ring-1 ring-info/12";
+  }
+}
+
 export function ToastProvider(props: ParentProps) {
   const [toasts, setToasts] = createSignal<ToastItem[]>([]);
 
@@ -77,81 +87,80 @@ export function ToastProvider(props: ParentProps) {
           <For each={toasts()}>
             {(item) => (
               <div
-                class={`glass rounded-md px-4 py-3 shadow-glass flex items-start gap-3 ${borderClass(item.type)}`}
+                class={`surface-raised rounded-lg px-4 py-3 shadow-floating flex items-start gap-3 ${ringClasses(item.type)}`}
                 style={{
                   animation: "toast-slide-in 200ms cubic-bezier(0.4,0,0.2,1)",
                 }}
               >
-                {/* Icon */}
-                <Show when={item.type === "success"}>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="text-success shrink-0 mt-0.5"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                </Show>
-                <Show when={item.type === "error"}>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="text-error shrink-0 mt-0.5"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="8" x2="12" y2="12" />
-                    <line x1="12" y1="16" x2="12.01" y2="16" />
-                  </svg>
-                </Show>
-                <Show when={item.type === "info"}>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="text-primary shrink-0 mt-0.5"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                    <line x1="12" y1="16" x2="12" y2="12" />
-                    <line x1="12" y1="8" x2="12.01" y2="8" />
-                  </svg>
-                </Show>
+                <div class={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${indicatorClasses(item.type)}`}>
+                  <Show when={item.type === "success"}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-current"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </Show>
+                  <Show when={item.type === "error"}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-current"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
+                  </Show>
+                  <Show when={item.type === "info"}>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="text-current"
+                    >
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="16" x2="12" y2="12" />
+                      <line x1="12" y1="8" x2="12.01" y2="8" />
+                    </svg>
+                  </Show>
+                </div>
 
-                {/* Content */}
-                <div class="flex-1 min-w-0">
+                <div class="min-w-0 flex-1">
                   <Show when={item.title}>
-                    <p class="text-sm font-medium text-text mb-0.5">
+                    <p class="font-section-header text-text mb-0.5">
                       {item.title}
                     </p>
                   </Show>
-                  <p class="text-sm text-text-secondary leading-snug">
+                  <p class="font-body text-text-secondary leading-snug">
                     {item.message}
                   </p>
                 </div>
 
-                {/* Close button */}
                 <button
                   onClick={() => removeToast(item.id)}
-                  class="shrink-0 text-text-tertiary hover:text-text transition-colors mt-0.5"
+                  class="shrink-0 text-text-tertiary transition-colors mt-0.5 hover:text-text focus-ring rounded-md"
                   aria-label="Dismiss"
                 >
                   <svg
