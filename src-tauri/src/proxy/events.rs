@@ -51,7 +51,7 @@ pub struct EventStreamStatus {
 /// The abort sender is stored in `STREAM_ABORT` *before* the task is spawned
 /// to prevent a race window where a second call could fail to cancel the first.
 pub fn start_event_stream(app: tauri::AppHandle, port: u16) {
-    let (abort_tx, abort_rx) = oneshot::channel::<()>();
+    let (abort_tx, mut abort_rx) = oneshot::channel::<()>();
 
     // Store abort_tx BEFORE spawning so a concurrent call that immediately
     // follows will find and cancel this stream — not an old stale sender.
@@ -80,7 +80,7 @@ pub fn start_event_stream(app: tauri::AppHandle, port: u16) {
         // Try to connect — bail early if cancelled before connection is established
         let ws_result = tokio::select! {
             result = connect_ws(&url) => result,
-            _ = abort_rx => {
+            _ = &mut abort_rx => {
                 log::info!("Event stream aborted before connection");
                 return;
             }
@@ -99,21 +99,7 @@ pub fn start_event_stream(app: tauri::AppHandle, port: u16) {
 
                 let (_, mut read) = ws_stream.split();
 
-                // Get a fresh abort receiver for the message loop.
-                // We create a new pair here; the stored abort_tx was already
-                // consumed above, so we register a second abort channel that
-                // gets cancelled when `start_event_stream` is called again.
-                let (loop_tx, mut loop_rx) = oneshot::channel::<()>();
-                {
-                    let mut guard =
-                        STREAM_ABORT.lock().expect("STREAM_ABORT mutex poisoned");
-                    // Only register if no other call has already replaced us
-                    if guard.is_none() {
-                        *guard = Some(loop_tx);
-                    }
-                    // If something already replaced us, drop loop_tx — the new
-                    // caller's abort_tx is now in the slot; we should exit.
-                }
+                let mut loop_rx = abort_rx;
 
                 loop {
                     tokio::select! {
