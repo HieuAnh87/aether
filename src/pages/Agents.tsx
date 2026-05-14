@@ -106,13 +106,6 @@ const AGENT_CONFIG_META: Record<string, AgentConfigMeta> = {
     effortOptions: ["low", "medium", "high", "xhigh"],
     defaultEffort: "high",
   },
-  "gemini-cli": {
-    configTarget: "Shell profile (~/.zshrc or ~/.bashrc)",
-    configExplanation:
-      "Exports CODE_ASSIST_ENDPOINT env var — only works with OAuth login (gemini login), not with GEMINI_API_KEY",
-    models: [],
-    supportsEffort: false,
-  },
   "amp-cli": {
     configTarget: "~/.config/amp/settings.json",
     configExplanation:
@@ -128,13 +121,6 @@ const AGENT_CONFIG_META: Record<string, AgentConfigMeta> = {
     supportsEffort: false,
     usesAvailableModels: true,
   },
-  kiro: {
-    configTarget: "Shell profile (~/.zshrc or ~/.bashrc)",
-    configExplanation:
-      "Exports KIRO_ENDPOINT and KIRO_API_KEY env vars to shell profile",
-    models: [],
-    supportsEffort: false,
-  },
 };
 
 // ─── Agent ordering ───────────────────────────────────────────────────────────
@@ -142,10 +128,8 @@ const AGENT_CONFIG_META: Record<string, AgentConfigMeta> = {
 const AGENT_ORDER = [
   "claude-code",
   "codex",
-  "gemini-cli",
   "amp-cli",
   "opencode",
-  "kiro",
 ];
 
 // ─── Agent icon map ───────────────────────────────────────────────────────────
@@ -154,10 +138,8 @@ const agentIcon = (id: string): string => {
   const icons: Record<string, string> = {
     "claude-code": "✦",
     codex: "◈",
-    "gemini-cli": "◇",
     "amp-cli": "⬡",
     opencode: "◉",
-    kiro: "⬢",
   };
   return icons[id] ?? "◌";
 };
@@ -216,7 +198,9 @@ const Agents: Component = () => {
 
   const sortedAgents = () => {
     const list = agents() ?? [];
-    return [...list].sort((a, b) => {
+    // Filter to only show agents that have config metadata (defensive)
+    const filtered = list.filter((agent) => AGENT_CONFIG_META[agent.id] !== undefined);
+    return [...filtered].sort((a, b) => {
       const ai = AGENT_ORDER.indexOf(a.id);
       const bi = AGENT_ORDER.indexOf(b.id);
       if (ai === -1 && bi === -1) return 0;

@@ -660,7 +660,6 @@ const AgentProviders: Component = () => {
     opencode: "OpenCode",
     claude: "Claude Code",
     codex: "Codex CLI",
-    gemini: "Gemini CLI",
   };
 
   const refreshSwitchState = async () => {
@@ -953,7 +952,7 @@ const AgentProviders: Component = () => {
 
   const primaryActionLabel = (provider: AppProviderView) => {
     if (isAdditiveMode()) {
-      return switchMeta()[provider.id]?.inConfig ? "In use" : "Use this provider";
+      return switchMeta()[provider.id]?.inConfig ? "Remove" : "Use this provider";
     }
     return currentProviderId() === provider.id ? "In use" : "Enable";
   };
@@ -1012,7 +1011,7 @@ const AgentProviders: Component = () => {
           <div>
             <p class="mb-2 font-caption text-xs text-text-muted">App context</p>
             <div class="inline-flex rounded-lg border border-border-strong bg-bg-surface p-0.5">
-              <For each={["opencode", "claude", "codex", "gemini"] as SwitchAppId[]}>
+              <For each={["opencode", "claude", "codex"] as SwitchAppId[]}>
                 {(app) => (
                   <button
                     class={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 ${

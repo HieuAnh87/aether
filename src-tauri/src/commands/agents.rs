@@ -1,6 +1,6 @@
 //! CLI Agent detection and configuration commands.
 //!
-//! Detects installed CLI agents (Claude Code, Codex, Gemini CLI, Amp, OpenCode, Kiro)
+//! Detects installed CLI agents (Claude Code, Codex, Amp, OpenCode)
 //! and configures them to route through the Aether proxy.
 
 use crate::config::settings;
@@ -86,22 +86,7 @@ pub fn detect_cli_agents() -> Vec<AgentStatus> {
         docs_url: "https://github.com/openai/codex".to_string(),
     });
 
-    // 3. Gemini CLI — env var only
-    let gemini_installed = which_exists("gemini");
-    let gemini_configured = check_env_configured("CODE_ASSIST_ENDPOINT", &endpoint);
-
-    agents.push(AgentStatus {
-        id: "gemini-cli".to_string(),
-        name: "Gemini CLI".to_string(),
-        description: "Google's Gemini CLI for Gemini models".to_string(),
-        installed: gemini_installed,
-        configured: gemini_configured,
-        config_type: "env".to_string(),
-        config_path: None,
-        docs_url: "https://github.com/google-gemini/gemini-cli".to_string(),
-    });
-
-    // 4. Amp CLI — ~/.config/amp/settings.json
+    // 3. Amp CLI — ~/.config/amp/settings.json
     let amp_installed = which_exists("amp");
     let amp_config = home.join(".config/amp/settings.json");
     let amp_configured = if amp_config.exists() {
@@ -127,7 +112,7 @@ pub fn detect_cli_agents() -> Vec<AgentStatus> {
         docs_url: "https://ampcode.com/".to_string(),
     });
 
-    // 5. OpenCode — ~/.config/opencode/opencode.json
+    // 4. OpenCode — ~/.config/opencode/opencode.json
     let opencode_installed = which_exists("opencode");
     let opencode_config = home.join(".config/opencode/opencode.json");
     let opencode_configured = if opencode_config.exists() {
@@ -147,21 +132,6 @@ pub fn detect_cli_agents() -> Vec<AgentStatus> {
         config_type: "config".to_string(),
         config_path: Some(opencode_config.to_string_lossy().to_string()),
         docs_url: "https://opencode.ai/docs/providers/".to_string(),
-    });
-
-    // 6. Kiro — env var only
-    let kiro_installed = which_exists("kiro") || which_exists("kiro-cli");
-    let kiro_configured = check_env_configured("KIRO_ENDPOINT", &endpoint);
-
-    agents.push(AgentStatus {
-        id: "kiro".to_string(),
-        name: "Kiro".to_string(),
-        description: "AWS's AI coding agent with spec-driven development".to_string(),
-        installed: kiro_installed,
-        configured: kiro_configured,
-        config_type: "env".to_string(),
-        config_path: None,
-        docs_url: "https://kiro.dev/docs/".to_string(),
     });
 
     agents
@@ -203,10 +173,8 @@ pub async fn configure_cli_agent(
             small_fast_model.as_deref(),
         ),
         "codex" => configure_codex(&home, &endpoint, model, effort),
-        "gemini-cli" => configure_gemini_cli(&endpoint),
         "amp-cli" => configure_amp_cli(&home, resolved_port),
         "opencode" => configure_opencode(&home, resolved_port, &endpoint, model, None),
-        "kiro" => configure_kiro(&endpoint),
         _ => Err(format!("Unknown agent: {}", agent_id)),
     }?;
 
@@ -405,17 +373,6 @@ fn merge_codex_toml(existing: &str, aether_url: &str, model: &str, effort: &str)
             body, section_header, aether_url
         )
     }
-}
-
-fn configure_gemini_cli(endpoint: &str) -> Result<serde_json::Value, String> {
-    let shell_config = format!("export CODE_ASSIST_ENDPOINT=\"{}\"", endpoint);
-
-    Ok(serde_json::json!({
-        "success": true,
-        "configType": "env",
-        "shellConfig": shell_config,
-        "instructions": "Add the above line to your ~/.bashrc, ~/.zshrc, or shell config file, then restart your terminal."
-    }))
 }
 
 fn configure_amp_cli(
@@ -919,20 +876,6 @@ pub fn preview_claude_code_config(
         "existingEnvConfig": existing_has_env,
         "willInject": injected,
         "isSafeMerge": true
-    }))
-}
-
-fn configure_kiro(endpoint: &str) -> Result<serde_json::Value, String> {
-    let shell_config = format!(
-        "export KIRO_ENDPOINT=\"{}\"\nexport KIRO_API_KEY=\"aether-managed\"",
-        endpoint
-    );
-
-    Ok(serde_json::json!({
-        "success": true,
-        "configType": "env",
-        "shellConfig": shell_config,
-        "instructions": "Add the above lines to your ~/.bashrc, ~/.zshrc, or shell config file, then restart your terminal."
     }))
 }
 

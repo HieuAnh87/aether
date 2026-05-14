@@ -1,4 +1,4 @@
-export type ProviderPresetApp = "claude" | "codex" | "gemini" | "opencode";
+export type ProviderPresetApp = "claude" | "codex" | "opencode";
 
 export interface ProviderPresetTemplateField {
   key: string;
@@ -37,15 +37,6 @@ export const providerPresets: ProviderPreset[] = [
     compatibility: "openai",
     modelsEndpoint: true,
     baseUrlTemplate: "https://api.openai.com/v1",
-  },
-  {
-    id: "gemini-official",
-    app: "gemini",
-    category: "official",
-    name: "Gemini Official",
-    compatibility: "openai",
-    modelsEndpoint: true,
-    baseUrlTemplate: "https://generativelanguage.googleapis.com/v1beta/openai",
   },
   {
     id: "openrouter-global",

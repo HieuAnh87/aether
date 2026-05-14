@@ -1,7 +1,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { invokeCompat } from "./commandClient";
 
-export type SwitchAppId = "claude" | "codex" | "gemini" | "opencode";
+export type SwitchAppId = "claude" | "codex" | "opencode";
 
 export interface SwitchProvider {
   id: string;
