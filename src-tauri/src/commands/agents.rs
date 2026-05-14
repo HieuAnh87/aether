@@ -7,6 +7,7 @@ use crate::config::settings;
 use crate::commands::V2CommandEnvelope;
 use crate::core::domain::ports::{ProjectionWriteRequest, ProjectionWriter};
 use crate::core::infrastructure::adapters::AtomicProjectionWriter;
+use tauri::Emitter;
 
 /// Status of a single CLI agent / coding tool.
 #[derive(serde::Serialize, Clone)]
@@ -204,7 +205,7 @@ pub async fn configure_cli_agent(
         "codex" => configure_codex(&home, &endpoint, model, effort),
         "gemini-cli" => configure_gemini_cli(&endpoint),
         "amp-cli" => configure_amp_cli(&home, resolved_port),
-        "opencode" => configure_opencode(&home, resolved_port, &endpoint, model),
+        "opencode" => configure_opencode(&home, resolved_port, &endpoint, model, None),
         "kiro" => configure_kiro(&endpoint),
         _ => Err(format!("Unknown agent: {}", agent_id)),
     }?;
@@ -470,9 +471,9 @@ fn configure_amp_cli(
     }))
 }
 
-/// Read all model names from proxy-config.yaml.
-/// Returns a deduplicated list of model names across all openai-compat providers.
-fn read_proxy_models(home: &std::path::Path) -> Vec<String> {
+/// Read all provider/model pairs from proxy-config.yaml.
+/// Returns deduplicated namespaced model keys in the form `provider:model`.
+fn read_proxy_models(home: &std::path::Path) -> Vec<(String, String)> {
     let proxy_config_path = home.join(".config/aether/proxy-config.yaml");
     let content = match std::fs::read_to_string(&proxy_config_path) {
         Ok(c) => c,
@@ -488,11 +489,12 @@ fn read_proxy_models(home: &std::path::Path) -> Vec<String> {
     //
     // We track whether we're inside a `models:` sub-block by comparing indent levels.
     // Provider-level `- name:` lines have indent < models-level `- name:` lines.
-    let mut models: Vec<String> = Vec::new();
+    let mut models: Vec<(String, String)> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut in_openai_section = false;
     let mut in_models_block = false;
     let mut models_indent: usize = 0;
+    let mut current_provider: Option<String> = None;
 
     for line in content.lines() {
         let trimmed = line.trim();
@@ -507,11 +509,22 @@ fn read_proxy_models(home: &std::path::Path) -> Vec<String> {
         if indent == 0 {
             in_openai_section = trimmed == "openai-compatibility:";
             in_models_block = false;
+            current_provider = None;
             continue;
         }
 
         if !in_openai_section {
             continue;
+        }
+
+        if let Some(rest) = trimmed.strip_prefix("- name:") {
+            let value = rest.trim();
+            if !in_models_block {
+                if !value.is_empty() {
+                    current_provider = Some(value.to_string());
+                }
+                continue;
+            }
         }
 
         // Detect `models:` key inside a provider entry (any indent > 0)
@@ -532,8 +545,14 @@ fn read_proxy_models(home: &std::path::Path) -> Vec<String> {
         if in_models_block {
             if let Some(rest) = trimmed.strip_prefix("- name:") {
                 let model_name = rest.trim().to_string();
-                if !model_name.is_empty() && seen.insert(model_name.clone()) {
-                    models.push(model_name);
+                if !model_name.is_empty() {
+                    let provider = current_provider
+                        .clone()
+                        .unwrap_or_else(|| "unknown".to_string());
+                    let namespaced = format!("{}:{}", provider, model_name);
+                    if seen.insert(namespaced.clone()) {
+                        models.push((namespaced, model_name));
+                    }
                 }
             }
         }
@@ -542,60 +561,124 @@ fn read_proxy_models(home: &std::path::Path) -> Vec<String> {
     models
 }
 
-fn configure_opencode(
+fn opencode_config_path(home: &std::path::Path) -> std::path::PathBuf {
+    home.join(".config/opencode/opencode.json")
+}
+
+fn emit_opencode_warning(app: Option<&tauri::AppHandle>, message: impl Into<String>) {
+    let payload = serde_json::json!({ "message": message.into() });
+    if let Some(app_handle) = app {
+        let _ = app_handle.emit("opencode-config-warning", payload);
+    }
+}
+
+fn read_opencode_json_for_merge(
+    app: Option<&tauri::AppHandle>,
+    config_path: &std::path::Path,
+) -> Result<Option<serde_json::Value>, String> {
+    if !config_path.exists() {
+        return Ok(None);
+    }
+
+    let raw = std::fs::read_to_string(config_path).map_err(|e| e.to_string())?;
+    match serde_json::from_str::<serde_json::Value>(&raw) {
+        Ok(v) => Ok(Some(v)),
+        Err(e) => {
+            let msg = format!(
+                "Failed to parse OpenCode config at {}: {}",
+                config_path.display(),
+                e
+            );
+            log::warn!("{}", msg);
+            emit_opencode_warning(app, msg.clone());
+            Err(msg)
+        }
+    }
+}
+
+fn build_aether_provider(endpoint: &str, proxy_models: &[(String, String)]) -> serde_json::Value {
+    let models_obj: serde_json::Map<String, serde_json::Value> = proxy_models
+        .iter()
+        .map(|(key, display)| (key.clone(), serde_json::json!({ "name": display })))
+        .collect();
+
+    serde_json::json!({
+        "id": "aether",
+        "name": "Aether Proxy",
+        "baseURL": format!("{}/v1", endpoint),
+        "apiKey": "aether-managed",
+        "models": serde_json::Value::Object(models_obj)
+    })
+}
+
+fn refresh_aether_models_in_config(
+    config: &mut serde_json::Value,
+    proxy_models: &[(String, String)],
+) -> bool {
+    let models_obj: serde_json::Map<String, serde_json::Value> = proxy_models
+        .iter()
+        .map(|(key, display)| (key.clone(), serde_json::json!({ "name": display })))
+        .collect();
+
+    if let Some(aether) = config
+        .get_mut("provider")
+        .and_then(|v| v.get_mut("aether"))
+        .and_then(|v| v.as_object_mut())
+    {
+        aether.insert("models".to_string(), serde_json::Value::Object(models_obj));
+        true
+    } else {
+        false
+    }
+}
+
+fn deconfigure_opencode_json(config: &mut serde_json::Value) -> bool {
+    let mut changed = false;
+    if let Some(provider_obj) = config.get_mut("provider").and_then(|v| v.as_object_mut()) {
+        changed = provider_obj.remove("aether").is_some();
+        if provider_obj.is_empty() {
+            if let Some(root) = config.as_object_mut() {
+                root.remove("provider");
+            }
+        }
+    }
+    changed
+}
+
+pub fn configure_opencode(
     home: &std::path::Path,
     port: u16,
     endpoint: &str,
     model: Option<String>,
+    app: Option<&tauri::AppHandle>,
 ) -> Result<serde_json::Value, String> {
     let config_dir = home.join(".config/opencode");
     std::fs::create_dir_all(&config_dir).map_err(|e| e.to_string())?;
-    let config_path = config_dir.join("opencode.json");
+    let config_path = opencode_config_path(home);
 
     // Build models object from proxy config so OpenCode knows what's available
     let proxy_models = read_proxy_models(home);
-    let models_obj: serde_json::Map<String, serde_json::Value> = proxy_models
-        .iter()
-        .map(|m| (m.clone(), serde_json::json!({})))
-        .collect();
-
-    let mut aether_provider = serde_json::json!({
-        "npm": "@ai-sdk/openai-compatible",
-        "name": "Aether",
-        "options": {
-            "baseURL": format!("{}/v1", endpoint),
-            "apiKey": "aether-managed"
-        }
-    });
-
-    if !models_obj.is_empty() {
-        aether_provider["models"] = serde_json::Value::Object(models_obj);
-    }
+    let aether_provider = build_aether_provider(endpoint, &proxy_models);
 
     // Merge aether provider into existing config
-    let mut final_config = if config_path.exists() {
-        if let Ok(existing) = std::fs::read_to_string(&config_path) {
-            if let Ok(mut existing_json) = serde_json::from_str::<serde_json::Value>(&existing) {
-                if let Some(providers) = existing_json.get_mut("provider") {
-                    if let Some(obj) = providers.as_object_mut() {
-                        obj.insert("aether".to_string(), aether_provider);
-                    }
+    let mut final_config = match read_opencode_json_for_merge(app, &config_path)? {
+        Some(mut existing_json) => {
+            if let Some(providers) = existing_json.get_mut("provider") {
+                if let Some(obj) = providers.as_object_mut() {
+                    obj.insert("aether".to_string(), aether_provider.clone());
                 } else {
-                    existing_json["provider"] = serde_json::json!({ "aether": aether_provider });
+                    existing_json["provider"] = serde_json::json!({ "aether": aether_provider.clone() });
                 }
-                // Ensure $schema is present
-                if existing_json.get("$schema").is_none() {
-                    existing_json["$schema"] = serde_json::json!("https://opencode.ai/config.json");
-                }
-                existing_json
             } else {
-                build_opencode_config(&aether_provider)
+                existing_json["provider"] = serde_json::json!({ "aether": aether_provider.clone() });
             }
-        } else {
-            build_opencode_config(&aether_provider)
+            // Ensure $schema is present
+            if existing_json.get("$schema").is_none() {
+                existing_json["$schema"] = serde_json::json!("https://opencode.ai/config.json");
+            }
+            existing_json
         }
-    } else {
-        build_opencode_config(&aether_provider)
+        None => build_opencode_config(&aether_provider),
     };
 
     // If a specific model was selected, set it as the top-level default model.
@@ -657,21 +740,16 @@ pub fn preview_opencode_config(port: Option<u16>, model: Option<String>) -> Resu
     let proxy_models = read_proxy_models(&home);
     let models_obj: serde_json::Map<String, serde_json::Value> = proxy_models
         .iter()
-        .map(|m| (m.clone(), serde_json::json!({})))
+        .map(|(key, display)| (key.clone(), serde_json::json!({ "name": display })))
         .collect();
 
-    let mut aether_provider = serde_json::json!({
-        "npm": "@ai-sdk/openai-compatible",
-        "name": "Aether",
-        "options": {
-            "baseURL": format!("{}/v1", endpoint),
-            "apiKey": "aether-managed"
-        }
+    let aether_provider = serde_json::json!({
+        "id": "aether",
+        "name": "Aether Proxy",
+        "baseURL": format!("{}/v1", endpoint),
+        "apiKey": "aether-managed",
+        "models": serde_json::Value::Object(models_obj)
     });
-
-    if !models_obj.is_empty() {
-        aether_provider["models"] = serde_json::Value::Object(models_obj);
-    }
 
     // Build the preview of what would be injected (just the delta)
     let mut injected = serde_json::json!({
@@ -705,6 +783,88 @@ pub fn preview_opencode_config(port: Option<u16>, model: Option<String>) -> Resu
         "willInject": injected,
         "isSafeMerge": true
     }))
+}
+
+#[tauri::command]
+pub fn deconfigure_opencode(app: tauri::AppHandle) -> Result<V2CommandEnvelope<bool>, String> {
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let config_path = opencode_config_path(&home);
+    if !config_path.exists() {
+        return Ok(V2CommandEnvelope::ok(false));
+    }
+
+    let mut json = match read_opencode_json_for_merge(Some(&app), &config_path) {
+        Ok(Some(v)) => v,
+        Ok(None) => return Ok(V2CommandEnvelope::ok(false)),
+        Err(_) => return Ok(V2CommandEnvelope::ok(false)),
+    };
+
+    let changed = deconfigure_opencode_json(&mut json);
+
+    if changed {
+        let content = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
+        AtomicProjectionWriter
+            .write_projection(ProjectionWriteRequest {
+                target: config_path.to_string_lossy().to_string(),
+                content,
+            })
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(V2CommandEnvelope::ok(changed))
+}
+
+#[tauri::command]
+pub fn refresh_opencode_models(
+    app: tauri::AppHandle,
+    port: Option<u16>,
+) -> Result<V2CommandEnvelope<bool>, String> {
+    let resolved_port = port.unwrap_or_else(|| {
+        settings::read_settings()
+            .map(|s| s.proxy_port)
+            .unwrap_or(8317)
+    });
+    let endpoint = format!("http://127.0.0.1:{}", resolved_port);
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let config_path = opencode_config_path(&home);
+
+    let proxy_models = read_proxy_models(&home);
+
+    if !config_path.exists() {
+        let _ = configure_opencode(&home, resolved_port, &endpoint, None, Some(&app))?;
+        let _ = app.emit("opencode-models-refreshed", serde_json::json!({ "configured": true }));
+        return Ok(V2CommandEnvelope::ok(true));
+    }
+
+    let mut json = match read_opencode_json_for_merge(Some(&app), &config_path) {
+        Ok(Some(v)) => v,
+        Ok(None) => build_opencode_config(&build_aether_provider(&endpoint, &proxy_models)),
+        Err(_) => return Ok(V2CommandEnvelope::ok(false)),
+    };
+
+    let has_aether = json
+        .get("provider")
+        .and_then(|v| v.get("aether"))
+        .is_some();
+
+    if !has_aether {
+        let _ = configure_opencode(&home, resolved_port, &endpoint, None, Some(&app))?;
+        let _ = app.emit("opencode-models-refreshed", serde_json::json!({ "configured": true }));
+        return Ok(V2CommandEnvelope::ok(true));
+    }
+
+    let _ = refresh_aether_models_in_config(&mut json, &proxy_models);
+
+    let content = serde_json::to_string_pretty(&json).map_err(|e| e.to_string())?;
+    AtomicProjectionWriter
+        .write_projection(ProjectionWriteRequest {
+            target: config_path.to_string_lossy().to_string(),
+            content,
+        })
+        .map_err(|e| e.to_string())?;
+
+    let _ = app.emit("opencode-models-refreshed", serde_json::json!({ "configured": false }));
+    Ok(V2CommandEnvelope::ok(true))
 }
 
 /// Preview what configure_claude_code would write, without actually writing it.
@@ -900,4 +1060,90 @@ fn check_env_configured(var: &str, expected_prefix: &str) -> bool {
     std::env::var(var)
         .map(|v| v.starts_with(expected_prefix))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn configure_merges_aether_and_preserves_other_providers_shape() {
+        let endpoint = "http://127.0.0.1:8317";
+        let proxy_models = vec![
+            ("openai:gpt-4o".to_string(), "gpt-4o".to_string()),
+            ("groq:llama-3.1-70b".to_string(), "llama-3.1-70b".to_string()),
+        ];
+        let aether = build_aether_provider(endpoint, &proxy_models);
+
+        let mut cfg = serde_json::json!({
+            "$schema": "https://opencode.ai/config.json",
+            "provider": {
+                "existing": {
+                    "name": "Existing",
+                    "baseURL": "https://api.example.com/v1"
+                }
+            }
+        });
+
+        cfg["provider"]["aether"] = aether;
+
+        assert!(cfg["provider"].get("existing").is_some());
+        assert_eq!(
+            cfg["provider"]["aether"]["baseURL"].as_str(),
+            Some("http://127.0.0.1:8317/v1")
+        );
+        assert_eq!(
+            cfg["provider"]["aether"]["apiKey"].as_str(),
+            Some("aether-managed")
+        );
+        assert!(cfg["provider"]["aether"]["models"].get("openai:gpt-4o").is_some());
+    }
+
+    #[test]
+    fn deconfigure_removes_only_aether_provider() {
+        let mut cfg = serde_json::json!({
+            "provider": {
+                "aether": { "name": "Aether Proxy" },
+                "other": { "name": "Other" }
+            }
+        });
+
+        let changed = deconfigure_opencode_json(&mut cfg);
+        assert!(changed);
+        assert!(cfg["provider"].get("aether").is_none());
+        assert!(cfg["provider"].get("other").is_some());
+    }
+
+    #[test]
+    fn refresh_updates_only_models_preserving_baseurl_and_apikey() {
+        let mut cfg = serde_json::json!({
+            "provider": {
+                "aether": {
+                    "name": "Aether Proxy",
+                    "baseURL": "http://127.0.0.1:9999/v1",
+                    "apiKey": "aether-managed",
+                    "models": {
+                        "old:model": { "name": "old:model" }
+                    }
+                }
+            }
+        });
+
+        let updated = refresh_aether_models_in_config(
+            &mut cfg,
+            &[("new:model".to_string(), "new:model".to_string())],
+        );
+
+        assert!(updated);
+        assert_eq!(
+            cfg["provider"]["aether"]["baseURL"].as_str(),
+            Some("http://127.0.0.1:9999/v1")
+        );
+        assert_eq!(
+            cfg["provider"]["aether"]["apiKey"].as_str(),
+            Some("aether-managed")
+        );
+        assert!(cfg["provider"]["aether"]["models"].get("new:model").is_some());
+        assert!(cfg["provider"]["aether"]["models"].get("old:model").is_none());
+    }
 }

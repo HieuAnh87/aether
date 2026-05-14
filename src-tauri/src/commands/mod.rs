@@ -1,5 +1,6 @@
 pub mod agent_providers;
 pub mod agents;
+pub mod provider_switch;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};

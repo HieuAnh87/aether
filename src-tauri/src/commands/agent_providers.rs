@@ -68,6 +68,59 @@ pub struct AgentProviderInfo {
     pub masked_key: Option<String>,
 }
 
+/// Provider orchestration mode for an app target.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderModeEntry {
+    pub app: String,
+    pub mode: String,
+    pub supported: bool,
+    pub notes: Option<String>,
+}
+
+/// Fixed mode matrix used by frontend and backend orchestration.
+#[tauri::command]
+pub fn get_provider_mode_matrix() -> Vec<ProviderModeEntry> {
+    vec![
+        ProviderModeEntry {
+            app: "claude".to_string(),
+            mode: "exclusive".to_string(),
+            supported: true,
+            notes: None,
+        },
+        ProviderModeEntry {
+            app: "codex".to_string(),
+            mode: "exclusive".to_string(),
+            supported: true,
+            notes: None,
+        },
+        ProviderModeEntry {
+            app: "gemini".to_string(),
+            mode: "exclusive".to_string(),
+            supported: true,
+            notes: None,
+        },
+        ProviderModeEntry {
+            app: "opencode".to_string(),
+            mode: "additive".to_string(),
+            supported: true,
+            notes: Some("OMO and OMO-slim are mutually exclusive sub-modes".to_string()),
+        },
+        ProviderModeEntry {
+            app: "openclaw".to_string(),
+            mode: "additive".to_string(),
+            supported: false,
+            notes: Some("Out of current Aether scope".to_string()),
+        },
+        ProviderModeEntry {
+            app: "hermes".to_string(),
+            mode: "additive".to_string(),
+            supported: false,
+            notes: Some("Out of current Aether scope".to_string()),
+        },
+    ]
+}
+
 // ---------------------------------------------------------------------------
 // Well-known provider presets
 // ---------------------------------------------------------------------------

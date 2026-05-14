@@ -25,6 +25,13 @@ export interface WellKnownProvider {
   modelsEndpoint: boolean;
 }
 
+export interface ProviderModeEntry {
+  app: "claude" | "codex" | "gemini" | "opencode" | "openclaw" | "hermes";
+  mode: "exclusive" | "additive";
+  supported: boolean;
+  notes?: string | null;
+}
+
 export interface AddProviderArgs {
   id: string;
   name: string;
@@ -52,6 +59,7 @@ export interface UpdateProviderArgs {
 const [providers, setProviders] = createSignal<AgentProviderInfo[]>([]);
 const [loading, setLoading] = createSignal(false);
 const [wellKnown, setWellKnown] = createSignal<WellKnownProvider[]>([]);
+const [modeMatrix, setModeMatrix] = createSignal<ProviderModeEntry[]>([]);
 
 async function refresh(): Promise<void> {
   setLoading(true);
@@ -66,6 +74,11 @@ async function refresh(): Promise<void> {
 async function loadWellKnown(): Promise<void> {
   const list = await invokeCompat<WellKnownProvider[]>("get_well_known_providers");
   setWellKnown(list);
+}
+
+async function loadModeMatrix(): Promise<void> {
+  const matrix = await invokeCompat<ProviderModeEntry[]>("get_provider_mode_matrix");
+  setModeMatrix(matrix);
 }
 
 async function addProvider(args: AddProviderArgs): Promise<void> {
@@ -128,8 +141,10 @@ export const agentProviderStore = {
   providers,
   loading,
   wellKnown,
+  modeMatrix,
   refresh,
   loadWellKnown,
+  loadModeMatrix,
   addProvider,
   updateProvider,
   deleteProvider,

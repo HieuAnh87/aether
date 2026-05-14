@@ -301,6 +301,7 @@ pub async fn start_proxy(
                                 "CLIProxyAPI process terminated unexpectedly (code: {:?})",
                                 code
                             );
+                            let _ = crate::commands::agents::deconfigure_opencode(app_exit.clone());
                             // Signal crashed status — we can't update the Mutex here
                             // because we don't own the reference. We emit an event so
                             // the frontend (and any future health-check) can react.
@@ -410,14 +411,30 @@ async fn health_check_loop(
                     }
                     // Sync Agent Providers into CLIProxy now that the proxy is up.
                     management::sync_providers_to_cliproxy(&app_handle).await;
+
+                    // Managed OpenCode lifecycle: inject aether provider once proxy is live.
+                    if let Some(home) = dirs::home_dir() {
+                        let endpoint = format!("http://127.0.0.1:{}", port);
+                        let _ = crate::commands::agents::configure_opencode(
+                            &home,
+                            port,
+                            &endpoint,
+                            None,
+                            Some(&app_handle),
+                        );
+                    }
                 } else if !healthy && first_success {
                     // Proxy was running but is now unreachable.
                     if stopping_flag.load(Ordering::SeqCst) {
                         // Intentional stop — the process-exit watcher handles the
                         // status transition; just exit cleanly.
                         log::debug!("Health check detected unreachable proxy during intentional stop (port {})", port);
+                        // Managed OpenCode lifecycle: remove aether provider on stop.
+                        let _ = crate::commands::agents::deconfigure_opencode(app_handle.clone());
                     } else {
                         log::warn!("CLIProxyAPI health check failed on port {} — status → Degraded", port);
+                        // Managed OpenCode lifecycle: remove aether provider on crash/degraded.
+                        let _ = crate::commands::agents::deconfigure_opencode(app_handle.clone());
                         if let Some(proxy_state) = app_handle.try_state::<Mutex<ProxyState>>() {
                             let mut s = proxy_state.lock().unwrap();
                             set_status_locked(
@@ -517,6 +534,9 @@ pub async fn stop_proxy(
             log::warn!("Failed to kill CLIProxyAPI process: {}", e);
         }
     }
+
+    // Managed OpenCode lifecycle: remove aether provider on explicit stop.
+    let _ = crate::commands::agents::deconfigure_opencode(app_handle.clone());
 
     let _ = port;
 

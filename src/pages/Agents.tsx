@@ -1,8 +1,7 @@
 import type { Component } from "solid-js";
-import { createSignal, createResource, createEffect, For, Show } from "solid-js";
+import { createSignal, createResource, createEffect, onMount, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { proxyStore } from "../stores/proxyStore";
-import { presetStore } from "../stores/presetStore";
 import { agentProviderStore } from "../stores/agentProviderStore";
 import GlassCard from "../components/GlassCard";
 import Button from "../components/Button";
@@ -84,7 +83,7 @@ interface AgentConfigMeta {
   supportsEffort: boolean;
   effortOptions?: string[];
   defaultEffort?: string;
-  usesAvailableModels?: boolean; // use presetStore.availableModels() dynamically
+  usesAvailableModels?: boolean; // use agentProviderStore.providers() dynamically
 }
 
 const AGENT_CONFIG_META: Record<string, AgentConfigMeta> = {
@@ -177,6 +176,13 @@ const Agents: Component = () => {
     return await invoke<AgentStatus[]>("detect_cli_agents");
   });
 
+  // Ensure provider registry is loaded when this tab is opened
+  onMount(() => {
+    if (agentProviderStore.providers().length === 0) {
+      void agentProviderStore.refresh();
+    }
+  });
+
   // Expansion & selection state
   const [expandedId, setExpandedId] = createSignal<string | null>(null);
   const [selectedModels, setSelectedModels] = createSignal<Record<string, string>>({});
@@ -237,26 +243,15 @@ const Agents: Component = () => {
     setExpandedId(wasExpanded ? null : agentId);
   };
 
-  // Derive a non-aether model list for dynamic model pickers (opencode, claude-code)
-  // When filterCompat is specified, only show models from providers with that compatibility.
+  // Build model list from the Aether provider registry (agent-providers.json).
+  // Each model is returned as "providerId:modelName" — the format the proxy understands.
+  // When filterCompat is specified, only include providers with that compatibility.
   const availableModelsForAgent = (filterCompat: "openai" | "anthropic" | null = null) => {
-    const all = presetStore.availableModels() ?? [];
-    const nonAether = all.filter((m) => !m.startsWith("aether/"));
-    if (!filterCompat) return nonAether;
-
-    // Get provider IDs matching the required compatibility
-    const matchingProviderIds = new Set(
-      agentProviderStore.providers()
-        .filter((p) => p.compatibility === filterCompat)
-        .map((p) => p.id)
-    );
-    if (matchingProviderIds.size === 0) return nonAether; // fallback: show all if no providers loaded
-
-    return nonAether.filter((m) => {
-      const slashIdx = m.indexOf("/");
-      const providerId = slashIdx > 0 ? m.slice(0, slashIdx) : "";
-      return matchingProviderIds.has(providerId);
-    });
+    const providers = agentProviderStore.providers();
+    const filtered = filterCompat
+      ? providers.filter((p) => p.compatibility === filterCompat)
+      : providers;
+    return filtered.flatMap((p) => p.models.map((m) => `${p.id}:${m}`));
   };
 
   const loadOpencodePreview = async (selectedModel?: string) => {
@@ -752,7 +747,7 @@ const Agents: Component = () => {
                                           <option value="" style={{ "background": "#141416" }}>
                                             — use default ({slot.defaultModel}) —
                                           </option>
-                                          <For each={availableModelsForAgent("anthropic")}>
+                                          <For each={availableModelsForAgent(null)}>
                                             {(m) => (
                                               <option value={m} style={{ "background": "#141416" }}>
                                                 {m}
@@ -789,7 +784,7 @@ const Agents: Component = () => {
                               }}
                             </For>
                             <p class="font-micro text-text-secondary/60">
-                              Only models from Anthropic-compatible providers are shown. Values are written as env vars in <code class="font-mono">~/.claude/settings.json</code>.
+                              All models from your configured providers are shown. Values are written as env vars in <code class="font-mono">~/.claude/settings.json</code>.
                             </p>
                           </div>
                         </Show>
