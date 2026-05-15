@@ -1,43 +1,44 @@
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
+# Aether — Claude Code Overrides
 
-This project is indexed by GitNexus as **aether** (2355 symbols, 4631 relationships, 205 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+Strictly follow the rules in ./AGENTS.md
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+<!-- Generated: 2026-05-15 -->
 
-## Always Do
+## Serena — LSP-Powered Code Intelligence
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+This project is onboarded with [Serena](https://github.com/serena-ai/serena) for LSP-aware code navigation and refactoring.
 
-## Never Do
+### Available Memories
 
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+| Memory | Content |
+|--------|---------|
+| `project_overview` | Purpose, tech stack, three-layer architecture, file structure |
+| `suggested_commands` | Setup, dev, build, version bump commands |
+| `style_and_conventions` | SolidJS patterns, TS strict flags, Rust conventions, Tailwind |
+| `task_completion` | Checklist for verifying changes (typecheck, quirks) |
+| `architecture/dependency_graph` | Page→store, component→store, backend module deps, execution flows |
+| `analytics/implementation` | Analytics store implementation details and patterns |
+| `bugfix/analyticsStore_duplicate_memos` | Fix for duplicate memo computations in analytics store |
+| `global/changelog-2026-03-31` | Global changelog entry from March 2026 |
 
-## Resources
+### When to Use Serena
 
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/aether/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/aether/clusters` | All functional areas |
-| `gitnexus://repo/aether/processes` | All execution flows |
-| `gitnexus://repo/aether/process/{name}` | Step-by-step execution trace |
+- **Symbol lookup**: `find_symbol` — find any function/class/interface by name across the codebase
+- **Go to definition**: `find_declaration` — jump to where a symbol is defined
+- **Find references**: `find_referencing_symbols` — who calls/uses this symbol?
+- **Find implementations**: `find_implementations` — concrete implementations of interfaces
+- **Safe refactoring**: `rename_symbol` — LSP-powered rename across all files
+- **Safe delete**: `safe_delete_symbol` — only deletes if no references exist
+- **Diagnostics**: `get_diagnostics_for_file` — type errors, warnings per file
+- **Code overview**: `get_symbols_overview` — quick scan of all symbols in a file
 
-## CLI
+### Serena vs GitNexus
 
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
+| Need | Use |
+|------|------|
+| Exact symbol lookup, go-to-definition, rename | **Serena** (LSP-precise) |
+| Execution flow tracing, blast radius analysis | **GitNexus** (knowledge graph) |
+| Find all references to a symbol | **Serena** `find_referencing_symbols` |
+| Understand what an entire flow does end-to-end | **GitNexus** `query` or `context` |
+| Pre-commit change verification | **GitNexus** `detect_changes` |
+| Type error diagnostics | **Serena** `get_diagnostics_for_file` |
